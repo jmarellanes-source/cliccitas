@@ -1,0 +1,34 @@
+{
+  "name": "app_citas",
+  "version": "1.0.0",
+  "description": "",
+  "main": "backend/src/index.js",
+  "scripts": {
+    "start": "node backend/src/index.js",
+    "dev": "nodemon backend/src/index.js",
+    "dev:all": "concurrently \"pnpm run dev\" \"pnpm run dev:frontend\"",
+    "dev:frontend": "cd frontend && pnpm run dev",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "gen:types": "supabase gen types typescript --local > backend/src/types/supabase.ts",
+    "gen:types:prod": "supabase gen types typescript --project-id \"$SUPABASE_PROJECT_ID\" --schema public > backend/src/types/supabase.ts",
+    "install:all": "pnpm install && cd frontend && pnpm install"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.4.1",
+  "devDependencies": {
+    "concurrently": "^10.0.0",
+    "nodemon": "^3.1.14"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.2",
+    "axios": "^1.16.1",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "joi": "^18.2.1",
+    "morgan": "^1.10.1"
+  }
+}
