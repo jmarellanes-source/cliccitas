@@ -12,25 +12,62 @@ router.use(authenticateUser);
 // GET /api/departments - Listar negocios del usuario autenticado
 router.get('/', async (req, res) => {
   try {
-    const userBusinesses = await supabaseService.getUserBusinesses(req.user.id);
+    // Obtener tiendas del usuario desde Supabase
+    const stores = await supabaseService.getStoresByOwner(req.user.id);
     
+    // Para cada tienda, obtener información adicional del PBX
     const businessesWithDetails = await Promise.all(
-      userBusinesses.map(async (ub) => {
+      stores.map(async (store) => {
         try {
-          const members = await pbxApi.getDepartmentMembers(ub.pbx_group_id);
+          // Obtener detalles del departamento en PBX
+          const members = await pbxApi.getDepartmentMembers(store.pbx_group_id);
           const owner = members.Members?.find(m => 
             m.Number.endsWith(pbxApi.adminSuffix) && m.Type === 'Extension'
           );
           
+          // Contar empleados
+          const employees = members.Members?.filter(m => 
+            m.Type === 'Extension' && 
+            !m.Number.endsWith(pbxApi.adminSuffix) &&
+            m.Number !== owner?.Number
+          ) || [];
+          
           return {
-            id: ub.pbx_group_id,
-            pbxUserId: ub.pbx_user_id,
-            role: ub.role,
+            id: store.id,
+            pbx_group_id: store.pbx_group_id,
+            pbx_owner_id: store.pbx_owner_id,
+            name: store.name,
+            slug: store.slug,
+            description: store.description,
+            logo_url: store.logo_url,
+            cover_url: store.cover_url,
+            theme_color: store.theme_color,
+            address: store.address,
+            phone: store.phone,
+            schedule: store.schedule,
             ownerNumber: owner?.Number,
-            url: `/negocio/${ub.slug || ub.pbx_group_id}`
+            employeesCount: employees.length,
+            role: 'owner',
+            is_active: store.is_active,
+            created_at: store.created_at
           };
         } catch (error) {
-          return { id: ub.pbx_group_id, role: ub.role, error: 'Could not fetch details' };
+          console.error(`Error fetching PBX details for store ${store.id}:`, error);
+          return {
+            id: store.id,
+            pbx_group_id: store.pbx_group_id,
+            name: store.name,
+            slug: store.slug,
+            description: store.description,
+            address: store.address,
+            phone: store.phone,
+            theme_color: store.theme_color,
+            ownerNumber: null,
+            employeesCount: 0,
+            role: 'owner',
+            is_active: store.is_active,
+            error: 'Could not fetch PBX details'
+          };
         }
       })
     );
@@ -193,6 +230,38 @@ router.post('/', authenticateUser, async (req, res) => {
       return res.status(503).json({ error: error.message });
     }
     
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/departments/:id/employees - Listar empleados de un negocio
+router.get('/:id/employees', authenticateUser, async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const groupId = parseInt(id);
+    const members = await pbxApi.getDepartmentMembers(groupId);
+    
+    // Filtrar empleados (excluir propietario)
+    const owner = members.Members?.find(m => 
+      m.Number.endsWith(pbxApi.adminSuffix) && m.Type === 'Extension'
+    );
+    
+    const employees = members.Members?.filter(m => 
+      m.Type === 'Extension' && 
+      m.Id !== owner?.Id &&
+      !m.Number.endsWith(pbxApi.adminSuffix)
+    ).map(emp => ({
+      id: emp.Id,
+      name: emp.MemberName,
+      number: emp.Number,
+      email: '', // El email no está disponible en este endpoint
+      role: 'employee'
+    })) || [];
+    
+    res.json({ employees });
+  } catch (error) {
+    console.error('Error listing employees:', error);
     res.status(500).json({ error: error.message });
   }
 });

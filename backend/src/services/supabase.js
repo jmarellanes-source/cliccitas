@@ -167,6 +167,17 @@ class SupabaseService {
     if (error) throw new Error(`Failed to create store: ${error.message}`);
     return data;
   }
+  
+  async getStoreById(storeId) {
+    const { data, error } = await supabaseAdmin
+      .from('stores')
+      .select('*')
+      .eq('id', storeId)
+      .single();
+    
+    if (error) throw new Error(`Failed to get store: ${error.message}`);
+    return data;
+  }
 
   async getStoresByOwner(ownerId) {
     const { data, error } = await supabaseAdmin

@@ -2,36 +2,37 @@
 import { useAuth } from '../contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import StoreCard from '../components/StoreCard';
 import CreateBusinessModal from '../components/CreateBusinessModal';
 
 function Dashboard() {
   const { user, logout, token } = useAuth();
-  const [businesses, setBusinesses] = useState([]);
+  const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchBusinesses();
+    fetchStores();
   }, []);
 
-  const fetchBusinesses = async () => {
+  const fetchStores = async () => {
     try {
       setLoading(true);
       const response = await axios.get(`${import.meta.env.VITE_API_URL}/departments`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setBusinesses(response.data.businesses || []);
+      setStores(response.data.businesses || []);
     } catch (error) {
-      console.error('Error fetching businesses:', error);
-      setError('Error al cargar tus negocios');
+      console.error('Error fetching stores:', error);
+      setError('Error al cargar tus tiendas');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBusinessCreated = (newBusiness) => {
-    setBusinesses([...businesses, newBusiness.business]);
+  const handleStoreUpdate = () => {
+    fetchStores();
   };
 
   return (
@@ -62,42 +63,29 @@ function Dashboard() {
 
         <div style={styles.section}>
           <div style={styles.sectionHeader}>
-            <h3>Mis Negocios</h3>
+            <h3>Mis Tiendas</h3>
             <button onClick={() => setShowModal(true)} style={styles.createBtn}>
-              + Crear Nuevo Negocio
+              + Crear Nueva Tienda
             </button>
           </div>
 
           {error && <div style={styles.error}>{error}</div>}
 
           {loading ? (
-            <div style={styles.loading}>Cargando tus negocios...</div>
-          ) : businesses.length === 0 ? (
+            <div style={styles.loading}>Cargando tus tiendas...</div>
+          ) : stores.length === 0 ? (
             <div style={styles.emptyState}>
-              <p>📭 No tienes negocios aún</p>
-              <p style={styles.emptyHint}>Haz clic en "Crear Nuevo Negocio" para comenzar</p>
+              <p>📭 No tienes tiendas aún</p>
+              <p style={styles.emptyHint}>Haz clic en "Crear Nueva Tienda" para comenzar</p>
             </div>
           ) : (
             <div style={styles.grid}>
-              {businesses.map((biz) => (
-                <div key={biz.id} style={styles.card}>
-                  <div style={styles.cardHeader}>
-                    <span style={styles.roleBadge}>
-                      {biz.role === 'owner' ? '👑 Propietario' : '👥 Empleado'}
-                    </span>
-                  </div>
-                  <div style={styles.cardBody}>
-                    <h4 style={styles.businessName}>Negocio #{biz.id}</h4>
-                    <p style={styles.businessDetail}>Rol: {biz.role}</p>
-                    {biz.ownerNumber && (
-                      <p style={styles.businessDetail}>Extensión: {biz.ownerNumber}</p>
-                    )}
-                  </div>
-                  <div style={styles.cardFooter}>
-                    <button style={styles.viewBtn}>Ver Tienda</button>
-                    <button style={styles.editBtn}>Configurar</button>
-                  </div>
-                </div>
+              {stores.map((store) => (
+                <StoreCard
+                  key={store.id}
+                  store={store}
+                  onUpdate={handleStoreUpdate}
+                />
               ))}
             </div>
           )}
@@ -108,7 +96,7 @@ function Dashboard() {
       {showModal && (
         <CreateBusinessModal
           onClose={() => setShowModal(false)}
-          onSuccess={handleBusinessCreated}
+          onSuccess={handleStoreUpdate}
         />
       )}
     </div>
@@ -197,65 +185,20 @@ const styles = {
   },
   grid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
     gap: '20px'
   },
-  card: {
-    border: '1px solid #e5e7eb',
-    borderRadius: '8px',
-    overflow: 'hidden',
-    transition: 'box-shadow 0.2s'
+  error: {
+    backgroundColor: '#fee2e2',
+    color: '#dc2626',
+    padding: '12px',
+    borderRadius: '6px',
+    marginBottom: '16px'
   },
-  cardHeader: {
-    padding: '12px 16px',
-    backgroundColor: '#f9fafb',
-    borderBottom: '1px solid #e5e7eb',
-    textAlign: 'right'
-  },
-  roleBadge: {
-    fontSize: '12px',
-    padding: '4px 8px',
-    backgroundColor: '#e0e7ff',
-    color: '#4338ca',
-    borderRadius: '4px'
-  },
-  cardBody: {
-    padding: '16px'
-  },
-  businessName: {
-    margin: '0 0 8px 0',
-    fontSize: '18px',
-    fontWeight: '600'
-  },
-  businessDetail: {
-    margin: '4px 0',
-    fontSize: '14px',
+  loading: {
+    textAlign: 'center',
+    padding: '48px',
     color: '#6b7280'
-  },
-  cardFooter: {
-    padding: '12px 16px',
-    backgroundColor: '#f9fafb',
-    borderTop: '1px solid #e5e7eb',
-    display: 'flex',
-    gap: '8px'
-  },
-  viewBtn: {
-    flex: 1,
-    padding: '8px',
-    backgroundColor: 'white',
-    border: '1px solid #3B82F6',
-    borderRadius: '4px',
-    color: '#3B82F6',
-    cursor: 'pointer'
-  },
-  editBtn: {
-    flex: 1,
-    padding: '8px',
-    backgroundColor: '#3B82F6',
-    border: 'none',
-    borderRadius: '4px',
-    color: 'white',
-    cursor: 'pointer'
   },
   emptyState: {
     textAlign: 'center',
@@ -265,18 +208,6 @@ const styles = {
   emptyHint: {
     fontSize: '14px',
     marginTop: '8px'
-  },
-  loading: {
-    textAlign: 'center',
-    padding: '48px',
-    color: '#6b7280'
-  },
-  error: {
-    backgroundColor: '#fee2e2',
-    color: '#dc2626',
-    padding: '12px',
-    borderRadius: '6px',
-    marginBottom: '16px'
   }
 };
 
