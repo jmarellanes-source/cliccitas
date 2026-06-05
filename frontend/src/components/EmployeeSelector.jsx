@@ -6,43 +6,65 @@ function EmployeeSelector({ employees, selectedEmployee, onSelect, currentUserRo
 
   return (
     <div style={styles.container}>
-      <label style={styles.label}>Seleccionar Empleado:</label>
-      <select
-        value={selectedEmployee?.id || ''}
-        onChange={(e) => {
-          const emp = employees.find(e => e.id === e.target.value);
-          onSelect(emp);
-        }}
-        style={styles.select}
-      >
-        {employees.map(emp => (
-          <option key={emp.id} value={emp.id}>
-            {emp.name} - Ext: {emp.number}
-          </option>
-        ))}
-      </select>
+      <div style={styles.content}>
+        <span style={styles.icon}>👥</span>
+        <div style={styles.info}>
+          <label style={styles.label}>Seleccionar empleado:</label>
+          <select
+            value={selectedEmployee?.id || ''}
+            onChange={(e) => {
+              const emp = employees.find(e => e.id === parseInt(e.target.value));
+              onSelect(emp);
+            }}
+            style={styles.select}
+          >
+            {employees.map(emp => (
+              <option key={emp.id} value={emp.id}>
+                {emp.name} - Ext: {emp.number} {emp.calendar_id ? '✅' : '⚠️'}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
     </div>
   );
 }
 
 const styles = {
   container: {
-    marginBottom: '20px',
-    padding: '16px',
-    backgroundColor: '#f0f9ff',
-    borderRadius: '8px',
-    border: '1px solid #bae6fd'
+    margin: '20px 24px',
+    backgroundColor: '#eff6ff',
+    borderRadius: '12px',
+    border: '1px solid #bfdbfe'
+  },
+  content: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '16px 20px',
+    flexWrap: 'wrap'
+  },
+  icon: {
+    fontSize: '24px'
+  },
+  info: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    flexWrap: 'wrap'
   },
   label: {
     fontWeight: '500',
-    marginRight: '12px'
+    color: '#1e40af'
   },
   select: {
-    padding: '8px 12px',
-    border: '1px solid #d1d5db',
-    borderRadius: '6px',
+    padding: '8px 16px',
+    border: '1px solid #bfdbfe',
+    borderRadius: '8px',
     fontSize: '14px',
-    minWidth: '250px'
+    backgroundColor: 'white',
+    minWidth: '250px',
+    cursor: 'pointer'
   }
 };
 

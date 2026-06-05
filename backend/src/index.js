@@ -26,8 +26,6 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 
-
-
 const departmentRoutes = require('./routes/departments');
 const authRoutes = require('./routes/auth');
 const storeRoutes = require('./routes/stores');

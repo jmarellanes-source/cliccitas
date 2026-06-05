@@ -108,7 +108,7 @@ router.post('/', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'Email already registered in PBX' });
     }
     
-    // 2. Encontrar el siguiente número disponible AUTOMÁTICAMENTE
+    // 2. Encontrar el siguiente número disponible
     console.log('🔍 Searching for next available owner number...');
     let businessId, ownerNumber;
     
@@ -135,7 +135,7 @@ router.post('/', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'Business name already exists' });
     }
     
-    // 5. Crear usuario propietario en PBX (PRIMERO)
+    // 5. Crear usuario propietario en PBX
     console.log(`👤 Creating owner user with number ${ownerNumber}...`);
     const pbxUser = await pbxApi.createUser({
       firstName: ownerFirstName,
@@ -147,16 +147,16 @@ router.post('/', authenticateUser, async (req, res) => {
     });
     console.log(`✅ User created with ID: ${pbxUser.Id}`);
     
-    // 6. Crear departamento (SEGUNDO)
+    // 6. Crear departamento
     console.log(`🏢 Creating department with business ID ${businessId}...`);
     const pbxGroup = await pbxApi.createDepartment(businessId, uniqueName, language);
     console.log(`✅ Department created with ID: ${pbxGroup.Id}`);
     
-    // 7. Asignar rol group_admins (TERCERO)
+    // 7. Asignar rol group_admins
     await pbxApi.assignRoleToUser(pbxUser.Id, pbxGroup.Id, 'group_admins');
     console.log(`✅ Role assigned to user in department`);
     
-    // 8. Guardar en tabla stores (CUARTO - AHORA pbxGroup y pbxUser YA EXISTEN)
+    // 8. Guardar en tabla stores
     const storeData = {
       owner_id: req.user.id,
       name: businessName,
@@ -165,22 +165,37 @@ router.post('/', authenticateUser, async (req, res) => {
       phone: phone || null,
       address: address || null,
       theme_color: theme_color || '#3B82F6',
-      pbx_group_id: pbxGroup.Id,     // ✅ Ahora existe
-      pbx_owner_id: pbxUser.Id       // ✅ Ahora existe
+      pbx_group_id: pbxGroup.Id,
+      pbx_owner_id: pbxUser.Id
     };
     
     const store = await supabaseService.createStore(storeData);
     console.log(`✅ Store created with ID: ${store.id}`);
     
-    // 9. Registrar relación en Supabase (QUINTO)
+    // 9. Crear calendario para el OWNER (después de tener store.id y pbxUser.Id)
+    console.log(`📅 Creating calendar for owner ${pbxUser.Id}...`);
+    const ownerCalendar = await supabaseService.createCalendar({
+      store_id: store.id,
+      pbx_user_id: pbxUser.Id,
+      user_name: `${ownerFirstName} ${ownerLastName}`,
+      user_email: ownerEmail,
+      timezone: 'America/Mexico_City',
+      appointment_duration: 30,
+      break_between_appointments: 0,
+      is_active: true
+    });
+    console.log(`✅ Owner calendar created with ID: ${ownerCalendar.id}`);
+    
+    // 10. Registrar relación en Supabase (SIN calendar_id)
     await supabaseService.linkUserToBusiness(
       req.user.id,
       pbxGroup.Id,
       pbxUser.Id,
       'owner'
+      // No se pasa calendar_id - la relación está en calendars.pbx_user_id
     );
     
-    // 10. Registrar en log (SEXTO)
+    // 11. Registrar en log
     await supabaseService.logBusinessCreation(
       req.user.id,
       pbxGroup.Id,
@@ -221,7 +236,6 @@ router.post('/', authenticateUser, async (req, res) => {
   } catch (error) {
     console.error('❌ Error creating business:', error);
     
-    // Manejo específico de errores
     if (error.message.includes('ALREADY_IN_USE')) {
       return res.status(409).json({ error: 'Extension number already in use. Please try again.' });
     }
@@ -306,6 +320,7 @@ router.get('/:id/employees', authenticateUser, async (req, res) => {
   }
 });
 
+
 // POST /api/departments/:id/employees - Agregar empleado
 router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req, res) => {
   const { id } = req.params;
@@ -375,14 +390,16 @@ router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req
     
     // Asignar rol users en PBX
     await pbxApi.assignRoleToUser(pbxUser.Id, groupId, 'users');
-    
+
+    // NO crear registro en user_businesses para empleados
+    // Los empleados solo existen en PBX y en la tabla calendars
     // Registrar relación en Supabase
-    await supabaseService.linkUserToBusiness(
-      req.user.id,
-      groupId,
-      pbxUser.Id,
-      'employee'
-    );
+    //await supabaseService.linkUserToBusiness(
+    //  req.user.id,
+    //  groupId,
+    //  pbxUser.Id,
+    //  'employee'
+    //);
     
     // Crear calendario para el empleado
     const calendar = await supabaseService.createCalendar({

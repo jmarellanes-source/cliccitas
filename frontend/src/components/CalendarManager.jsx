@@ -10,7 +10,6 @@ function CalendarManager({ store, calendar, onUpdate, userRole }) {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('hours');
-  const [selectedDate, setSelectedDate] = useState('');
   const [showExceptionForm, setShowExceptionForm] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -34,7 +33,6 @@ function CalendarManager({ store, calendar, onUpdate, userRole }) {
     
     setLoading(true);
     try {
-      // Obtener horarios
       const hoursRes = await axios.get(
         `${import.meta.env.VITE_API_URL}/calendar/${calendar.id}/schedule`,
         { headers: { Authorization: `Bearer ${token}` } }
@@ -64,12 +62,9 @@ function CalendarManager({ store, calendar, onUpdate, userRole }) {
       setWorkingHours(workingHours.map(h => 
         h.day_of_week === dayId ? updated.data : h
       ));
-      setSuccess('Horario actualizado');
-      setTimeout(() => setSuccess(''), 3000);
+      showSuccess('Horario actualizado');
     } catch (error) {
-      console.error('Error updating working hours:', error);
-      setError('Error al actualizar horario');
-      setTimeout(() => setError(''), 3000);
+      showError('Error al actualizar horario');
     }
   };
 
@@ -93,12 +88,9 @@ function CalendarManager({ store, calendar, onUpdate, userRole }) {
       
       setShowExceptionForm(false);
       fetchCalendarData();
-      setSuccess('Excepción agregada');
-      setTimeout(() => setSuccess(''), 3000);
+      showSuccess('Excepción agregada');
     } catch (error) {
-      console.error('Error adding exception:', error);
-      setError('Error al agregar excepción');
-      setTimeout(() => setError(''), 3000);
+      showError('Error al agregar excepción');
     }
   };
 
@@ -111,13 +103,20 @@ function CalendarManager({ store, calendar, onUpdate, userRole }) {
       );
       
       fetchCalendarData();
-      setSuccess('Cita actualizada');
-      setTimeout(() => setSuccess(''), 3000);
+      showSuccess('Cita actualizada');
     } catch (error) {
-      console.error('Error updating appointment:', error);
-      setError('Error al actualizar cita');
-      setTimeout(() => setError(''), 3000);
+      showError('Error al actualizar cita');
     }
+  };
+
+  const showSuccess = (message) => {
+    setSuccess(message);
+    setTimeout(() => setSuccess(''), 3000);
+  };
+
+  const showError = (message) => {
+    setError(message);
+    setTimeout(() => setError(''), 3000);
   };
 
   const getStatusBadge = (status) => {
@@ -137,7 +136,12 @@ function CalendarManager({ store, calendar, onUpdate, userRole }) {
   };
 
   if (loading) {
-    return <div style={styles.loading}>Cargando calendario...</div>;
+    return (
+      <div style={styles.loadingContainer}>
+        <div style={styles.spinnerSmall}></div>
+        <p>Cargando calendario...</p>
+      </div>
+    );
   }
 
   return (
@@ -148,6 +152,7 @@ function CalendarManager({ store, calendar, onUpdate, userRole }) {
       <div style={styles.tabs}>
         <button
           onClick={() => setActiveTab('hours')}
+          className={activeTab === 'hours' ? 'tab-active' : ''}
           style={{ ...styles.tab, ...(activeTab === 'hours' ? styles.tabActive : {}) }}
         >
           🕐 Horarios
@@ -166,50 +171,53 @@ function CalendarManager({ store, calendar, onUpdate, userRole }) {
         </button>
       </div>
 
-      {/* Tab: Horarios de Trabajo */}
       {activeTab === 'hours' && (
         <div style={styles.tabContent}>
-          <h3>Horarios de Atención</h3>
-          <p style={styles.hint}>
-            Define los horarios de trabajo para cada día de la semana
-          </p>
+          <div style={styles.sectionHeader}>
+            <h3>Horarios de Atención</h3>
+            <p style={styles.sectionDesc}>Define los horarios de trabajo para cada día</p>
+          </div>
 
-          <div style={styles.hoursTable}>
+          <div style={styles.hoursGrid}>
             {daysOfWeek.map(day => {
               const hour = workingHours.find(h => h.day_of_week === day.id);
               if (!hour) return null;
               
               return (
-                <div key={day.id} style={styles.hourRow}>
-                  <div style={styles.dayName}>{day.name}</div>
-                  <div style={styles.hourControls}>
-                    <label style={styles.checkboxLabel}>
+                <div key={day.id} style={styles.hourCard}>
+                  <div style={styles.dayHeader}>
+                    <span style={styles.dayName}>{day.name}</span>
+                    <label style={styles.toggleSwitch}>
                       <input
                         type="checkbox"
                         checked={hour.is_working_day}
                         onChange={(e) => handleWorkingHourChange(day.id, 'is_working_day', e.target.checked)}
                       />
-                      Activo
+                      <span style={styles.toggleSlider}></span>
                     </label>
-                    
-                    {hour.is_working_day && (
-                      <>
-                        <input
-                          type="time"
-                          value={hour.start_time?.substring(0, 5) || '09:00'}
-                          onChange={(e) => handleWorkingHourChange(day.id, 'start_time', e.target.value)}
-                          style={styles.timeInput}
-                        />
-                        <span>a</span>
-                        <input
-                          type="time"
-                          value={hour.end_time?.substring(0, 5) || '18:00'}
-                          onChange={(e) => handleWorkingHourChange(day.id, 'end_time', e.target.value)}
-                          style={styles.timeInput}
-                        />
-                      </>
-                    )}
                   </div>
+                  
+                  {hour.is_working_day && (
+                    <div style={styles.timeRange}>
+                      <input
+                        type="time"
+                        value={hour.start_time?.substring(0, 5) || '09:00'}
+                        onChange={(e) => handleWorkingHourChange(day.id, 'start_time', e.target.value + ':00')}
+                        style={styles.timeInput}
+                      />
+                      <span style={styles.timeSeparator}>→</span>
+                      <input
+                        type="time"
+                        value={hour.end_time?.substring(0, 5) || '18:00'}
+                        onChange={(e) => handleWorkingHourChange(day.id, 'end_time', e.target.value + ':00')}
+                        style={styles.timeInput}
+                      />
+                    </div>
+                  )}
+                  
+                  {!hour.is_working_day && (
+                    <div style={styles.closedBadge}>Cerrado</div>
+                  )}
                 </div>
               );
             })}
@@ -217,72 +225,51 @@ function CalendarManager({ store, calendar, onUpdate, userRole }) {
         </div>
       )}
 
-      {/* Tab: Excepciones */}
       {activeTab === 'exceptions' && (
         <div style={styles.tabContent}>
           <div style={styles.sectionHeader}>
-            <h3>Excepciones</h3>
-            <button onClick={() => setShowExceptionForm(true)} style={styles.addBtn}>
+            <div>
+              <h3>Excepciones</h3>
+              <p style={styles.sectionDesc}>Días festivos, vacaciones o días con horario especial</p>
+            </div>
+            <button onClick={() => setShowExceptionForm(true)} style={styles.primaryBtn}>
               + Agregar Excepción
             </button>
           </div>
-          <p style={styles.hint}>
-            Días festivos, vacaciones o días con horario especial
-          </p>
 
           {showExceptionForm && (
-            <form onSubmit={handleAddException} style={styles.exceptionForm}>
-              <h4>Nueva Excepción</h4>
-              <div style={styles.row}>
-                <div style={styles.formGroup}>
+            <form onSubmit={handleAddException} style={styles.formCard}>
+              <h4 style={styles.formTitle}>Nueva Excepción</h4>
+              <div style={styles.formGrid}>
+                <div style={styles.formField}>
                   <label>Fecha *</label>
-                  <input
-                    type="date"
-                    name="exception_date"
-                    required
-                    style={styles.input}
-                  />
+                  <input type="date" name="exception_date" required style={styles.input} />
                 </div>
-                <div style={styles.formGroup}>
+                <div style={styles.formField}>
                   <label>Tipo *</label>
-                  <select name="is_available" required style={styles.input}>
+                  <select name="is_available" required style={styles.select}>
                     <option value="false">Día NO laboral (cerrado)</option>
                     <option value="true">Día laboral (horario especial)</option>
                   </select>
                 </div>
-              </div>
-              <div style={styles.row}>
-                <div style={styles.formGroup}>
+                <div style={styles.formField}>
                   <label>Horario especial (inicio)</label>
-                  <input
-                    type="time"
-                    name="start_time"
-                    style={styles.input}
-                  />
+                  <input type="time" name="start_time" style={styles.input} />
                 </div>
-                <div style={styles.formGroup}>
+                <div style={styles.formField}>
                   <label>Horario especial (fin)</label>
-                  <input
-                    type="time"
-                    name="end_time"
-                    style={styles.input}
-                  />
+                  <input type="time" name="end_time" style={styles.input} />
+                </div>
+                <div style={{ ...styles.formField, gridColumn: '1 / -1' }}>
+                  <label>Motivo</label>
+                  <input type="text" name="reason" placeholder="Ej: Vacaciones, Feriado" style={styles.input} />
                 </div>
               </div>
-              <div style={styles.formGroup}>
-                <label>Motivo</label>
-                <input
-                  type="text"
-                  name="reason"
-                  placeholder="Ej: Vacaciones, Feriado, Capacitación"
-                  style={styles.input}
-                />
-              </div>
-              <div style={styles.formButtons}>
-                <button type="button" onClick={() => setShowExceptionForm(false)} style={styles.cancelBtn}>
+              <div style={styles.formActions}>
+                <button type="button" onClick={() => setShowExceptionForm(false)} style={styles.secondaryBtn}>
                   Cancelar
                 </button>
-                <button type="submit" style={styles.submitBtn}>
+                <button type="submit" style={styles.primaryBtnSmall}>
                   Guardar
                 </button>
               </div>
@@ -291,21 +278,24 @@ function CalendarManager({ store, calendar, onUpdate, userRole }) {
 
           <div style={styles.exceptionsList}>
             {exceptions.length === 0 ? (
-              <p style={styles.emptyState}>No hay excepciones configuradas</p>
+              <div style={styles.emptyState}>
+                <span style={styles.emptyIcon}>📅</span>
+                <p>No hay excepciones configuradas</p>
+              </div>
             ) : (
               exceptions.map(exception => (
-                <div key={exception.id} style={styles.exceptionItem}>
-                  <div>
-                    <strong>{new Date(exception.exception_date).toLocaleDateString('es-MX')}</strong>
-                    {exception.reason && <span> - {exception.reason}</span>}
+                <div key={exception.id} style={styles.exceptionCard}>
+                  <div style={styles.exceptionDate}>
+                    <strong>{new Date(exception.exception_date).toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong>
+                    {exception.reason && <span style={styles.exceptionReason}> - {exception.reason}</span>}
                   </div>
-                  <div>
+                  <div style={styles.exceptionStatus}>
                     {exception.is_available ? (
-                      <span style={{ color: '#10b981' }}>
-                        Horario: {exception.start_time?.substring(0, 5)} - {exception.end_time?.substring(0, 5)}
+                      <span style={styles.availableBadge}>
+                        🕐 {exception.start_time?.substring(0, 5)} - {exception.end_time?.substring(0, 5)}
                       </span>
                     ) : (
-                      <span style={{ color: '#ef4444' }}>Cerrado</span>
+                      <span style={styles.closedBadgeLarge}>🔴 Cerrado</span>
                     )}
                   </div>
                 </div>
@@ -315,47 +305,51 @@ function CalendarManager({ store, calendar, onUpdate, userRole }) {
         </div>
       )}
 
-      {/* Tab: Citas */}
       {activeTab === 'appointments' && (
         <div style={styles.tabContent}>
-          <h3>Citas Programadas</h3>
-          <p style={styles.hint}>
-            Gestiona las citas de los clientes
-          </p>
+          <div style={styles.sectionHeader}>
+            <div>
+              <h3>Citas Programadas</h3>
+              <p style={styles.sectionDesc}>Gestiona las citas de los clientes</p>
+            </div>
+          </div>
 
           <div style={styles.appointmentsList}>
             {appointments.length === 0 ? (
-              <p style={styles.emptyState}>No hay citas programadas</p>
+              <div style={styles.emptyState}>
+                <span style={styles.emptyIcon}>📋</span>
+                <p>No hay citas programadas</p>
+              </div>
             ) : (
               appointments.map(appointment => (
-                <div key={appointment.id} style={styles.appointmentItem}>
+                <div key={appointment.id} style={styles.appointmentCard}>
                   <div style={styles.appointmentHeader}>
-                    <div>
-                      <strong>{appointment.customer_name}</strong>
-                      <span style={styles.appointmentEmail}>{appointment.customer_email}</span>
+                    <div style={styles.customerInfo}>
+                      <strong style={styles.customerName}>{appointment.customer_name}</strong>
+                      <span style={styles.customerEmail}>{appointment.customer_email}</span>
                     </div>
                     {getStatusBadge(appointment.status)}
                   </div>
                   <div style={styles.appointmentDetails}>
-                    <div>📅 {new Date(appointment.start_time).toLocaleDateString('es-MX')}</div>
-                    <div>🕐 {new Date(appointment.start_time).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })} - {new Date(appointment.end_time).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</div>
-                    {appointment.customer_phone && <div>📞 {appointment.customer_phone}</div>}
-                    {appointment.notes && <div style={styles.appointmentNotes}>📝 {appointment.notes}</div>}
+                    <div style={styles.detailItem}>📅 {new Date(appointment.start_time).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+                    <div style={styles.detailItem}>🕐 {new Date(appointment.start_time).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })} - {new Date(appointment.end_time).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</div>
+                    {appointment.customer_phone && <div style={styles.detailItem}>📞 {appointment.customer_phone}</div>}
                   </div>
+                  {appointment.notes && <div style={styles.appointmentNotes}>📝 {appointment.notes}</div>}
                   <div style={styles.appointmentActions}>
                     {appointment.status === 'pending' && (
                       <>
                         <button onClick={() => handleUpdateAppointment(appointment.id, 'confirmed')} style={styles.confirmBtn}>
-                          Confirmar
+                          ✓ Confirmar
                         </button>
-                        <button onClick={() => handleUpdateAppointment(appointment.id, 'cancelled')} style={styles.cancelAppointmentBtn}>
-                          Cancelar
+                        <button onClick={() => handleUpdateAppointment(appointment.id, 'cancelled')} style={styles.cancelBtn}>
+                          ✗ Cancelar
                         </button>
                       </>
                     )}
                     {appointment.status === 'confirmed' && (
                       <button onClick={() => handleUpdateAppointment(appointment.id, 'completed')} style={styles.completeBtn}>
-                        Marcar Completada
+                        ✓ Marcar Completada
                       </button>
                     )}
                   </div>
@@ -371,246 +365,344 @@ function CalendarManager({ store, calendar, onUpdate, userRole }) {
 
 const styles = {
   container: {
-    padding: '24px'
+    backgroundColor: 'white',
+    borderRadius: '16px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    overflow: 'hidden'
   },
   tabs: {
     display: 'flex',
-    gap: '8px',
+    gap: '4px',
+    backgroundColor: '#f9fafb',
     borderBottom: '1px solid #e5e7eb',
-    marginBottom: '24px'
+    padding: '0 24px'
   },
   tab: {
-    padding: '10px 20px',
+    padding: '14px 24px',
     backgroundColor: 'transparent',
     border: 'none',
     cursor: 'pointer',
     fontSize: '14px',
     fontWeight: '500',
     color: '#6b7280',
-    borderRadius: '6px 6px 0 0'
+    transition: 'all 0.2s'
   },
   tabActive: {
     color: '#3B82F6',
     borderBottom: '2px solid #3B82F6',
-    backgroundColor: '#eff6ff'
+    backgroundColor: 'transparent'
   },
   tabContent: {
-    padding: '20px 0'
+    padding: '24px'
   },
   sectionHeader: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '16px'
+    alignItems: 'flex-start',
+    marginBottom: '24px',
+    flexWrap: 'wrap',
+    gap: '16px'
   },
-  hoursTable: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px'
+  sectionDesc: {
+    fontSize: '13px',
+    color: '#6b7280',
+    marginTop: '4px'
   },
-  hourRow: {
+  hoursGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+    gap: '16px'
+  },
+  hourCard: {
+    backgroundColor: '#f9fafb',
+    borderRadius: '12px',
+    padding: '16px',
+    border: '1px solid #e5e7eb',
+    transition: 'all 0.2s'
+  },
+  dayHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '12px',
-    backgroundColor: '#f9fafb',
-    borderRadius: '8px',
-    border: '1px solid #e5e7eb'
+    marginBottom: '12px'
   },
   dayName: {
     fontWeight: '600',
-    width: '100px'
+    fontSize: '16px',
+    color: '#374151'
   },
-  hourControls: {
+  toggleSwitch: {
+    position: 'relative',
+    display: 'inline-block',
+    width: '44px',
+    height: '24px'
+  },
+  timeRange: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px'
-  },
-  checkboxLabel: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    fontSize: '14px',
-    cursor: 'pointer'
+    gap: '8px'
   },
   timeInput: {
-    padding: '6px 10px',
+    flex: 1,
+    padding: '8px 12px',
     border: '1px solid #d1d5db',
-    borderRadius: '4px',
+    borderRadius: '8px',
+    fontSize: '14px',
+    backgroundColor: 'white'
+  },
+  timeSeparator: {
+    color: '#6b7280',
     fontSize: '14px'
   },
-  addBtn: {
+  closedBadge: {
+    textAlign: 'center',
+    padding: '8px',
+    backgroundColor: '#fee2e2',
+    borderRadius: '8px',
+    fontSize: '13px',
+    color: '#dc2626'
+  },
+  primaryBtn: {
+    padding: '10px 20px',
+    backgroundColor: '#3B82F6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '10px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '500'
+  },
+  primaryBtnSmall: {
     padding: '8px 16px',
     backgroundColor: '#3B82F6',
     color: 'white',
     border: 'none',
-    borderRadius: '6px',
+    borderRadius: '8px',
     cursor: 'pointer',
-    fontSize: '14px'
+    fontSize: '14px',
+    fontWeight: '500'
   },
-  exceptionForm: {
+  secondaryBtn: {
+    padding: '8px 16px',
+    backgroundColor: '#e5e7eb',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    color: '#374151'
+  },
+  formCard: {
     backgroundColor: '#f9fafb',
     padding: '20px',
-    borderRadius: '8px',
+    borderRadius: '12px',
     marginBottom: '24px',
     border: '1px solid #e5e7eb'
   },
-  row: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '16px',
-    marginBottom: '16px'
+  formTitle: {
+    margin: '0 0 16px 0',
+    fontSize: '16px',
+    fontWeight: '600'
   },
-  formGroup: {
+  formGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+    gap: '16px',
+    marginBottom: '20px'
+  },
+  formField: {
     display: 'flex',
     flexDirection: 'column',
     gap: '6px'
   },
   input: {
-    padding: '8px',
+    padding: '10px',
     border: '1px solid #d1d5db',
-    borderRadius: '4px',
+    borderRadius: '8px',
     fontSize: '14px'
   },
-  formButtons: {
+  select: {
+    padding: '10px',
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    fontSize: '14px',
+    backgroundColor: 'white'
+  },
+  formActions: {
     display: 'flex',
     justifyContent: 'flex-end',
-    gap: '12px',
-    marginTop: '16px'
-  },
-  cancelBtn: {
-    padding: '8px 16px',
-    backgroundColor: '#e5e7eb',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer'
-  },
-  submitBtn: {
-    padding: '8px 16px',
-    backgroundColor: '#3B82F6',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer'
+    gap: '12px'
   },
   exceptionsList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '8px',
-    marginTop: '16px'
+    gap: '12px'
   },
-  exceptionItem: {
+  exceptionCard: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '12px',
+    padding: '16px',
     backgroundColor: '#f9fafb',
-    borderRadius: '8px',
-    border: '1px solid #e5e7eb'
+    borderRadius: '12px',
+    border: '1px solid #e5e7eb',
+    flexWrap: 'wrap',
+    gap: '12px'
+  },
+  exceptionDate: {
+    fontSize: '14px'
+  },
+  exceptionReason: {
+    color: '#6b7280'
+  },
+  availableBadge: {
+    padding: '4px 12px',
+    backgroundColor: '#d1fae5',
+    borderRadius: '20px',
+    fontSize: '13px',
+    color: '#059669'
+  },
+  closedBadgeLarge: {
+    padding: '4px 12px',
+    backgroundColor: '#fee2e2',
+    borderRadius: '20px',
+    fontSize: '13px',
+    color: '#dc2626'
   },
   appointmentsList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '12px'
+    gap: '16px'
   },
-  appointmentItem: {
-    padding: '16px',
+  appointmentCard: {
+    padding: '20px',
     backgroundColor: '#f9fafb',
-    borderRadius: '8px',
+    borderRadius: '12px',
     border: '1px solid #e5e7eb'
   },
   appointmentHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '12px',
-    paddingBottom: '8px',
-    borderBottom: '1px solid #e5e7eb'
+    marginBottom: '16px',
+    paddingBottom: '12px',
+    borderBottom: '1px solid #e5e7eb',
+    flexWrap: 'wrap',
+    gap: '12px'
   },
-  appointmentEmail: {
-    fontSize: '12px',
-    color: '#6b7280',
-    marginLeft: '8px'
+  customerInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px'
+  },
+  customerName: {
+    fontSize: '16px',
+    color: '#111827'
+  },
+  customerEmail: {
+    fontSize: '13px',
+    color: '#6b7280'
   },
   appointmentDetails: {
     display: 'flex',
-    gap: '16px',
+    gap: '20px',
     fontSize: '14px',
     color: '#4b5563',
     flexWrap: 'wrap',
     marginBottom: '12px'
   },
+  detailItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px'
+  },
   appointmentNotes: {
-    width: '100%',
+    padding: '12px',
+    backgroundColor: '#f3f4f6',
+    borderRadius: '8px',
     fontSize: '13px',
     color: '#6b7280',
-    marginTop: '8px'
+    marginBottom: '16px'
   },
   appointmentActions: {
     display: 'flex',
-    gap: '8px'
+    gap: '8px',
+    flexWrap: 'wrap'
   },
   badge: {
-    padding: '4px 8px',
-    borderRadius: '4px',
+    padding: '4px 12px',
+    borderRadius: '20px',
     fontSize: '12px',
     fontWeight: '500'
   },
   confirmBtn: {
-    padding: '6px 12px',
+    padding: '6px 16px',
     backgroundColor: '#10b981',
     color: 'white',
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: '8px',
     cursor: 'pointer',
-    fontSize: '12px'
+    fontSize: '13px'
   },
-  cancelAppointmentBtn: {
-    padding: '6px 12px',
+  cancelBtn: {
+    padding: '6px 16px',
     backgroundColor: '#ef4444',
     color: 'white',
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: '8px',
     cursor: 'pointer',
-    fontSize: '12px'
+    fontSize: '13px'
   },
   completeBtn: {
-    padding: '6px 12px',
+    padding: '6px 16px',
     backgroundColor: '#6b7280',
     color: 'white',
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: '8px',
     cursor: 'pointer',
-    fontSize: '12px'
-  },
-  hint: {
-    fontSize: '13px',
-    color: '#6b7280',
-    marginBottom: '20px'
+    fontSize: '13px'
   },
   error: {
     backgroundColor: '#fee2e2',
     color: '#dc2626',
-    padding: '12px',
-    borderRadius: '6px',
-    marginBottom: '16px'
+    padding: '12px 20px',
+    margin: '16px',
+    borderRadius: '10px',
+    fontSize: '14px'
   },
   success: {
     backgroundColor: '#d1fae5',
     color: '#059669',
-    padding: '12px',
-    borderRadius: '6px',
-    marginBottom: '16px'
+    padding: '12px 20px',
+    margin: '16px',
+    borderRadius: '10px',
+    fontSize: '14px'
   },
-  loading: {
-    textAlign: 'center',
-    padding: '40px',
+  loadingContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '60px',
+    gap: '12px',
     color: '#6b7280'
+  },
+  spinnerSmall: {
+    width: '30px',
+    height: '30px',
+    border: '2px solid #e5e7eb',
+    borderTopColor: '#3B82F6',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite'
   },
   emptyState: {
     textAlign: 'center',
-    padding: '32px',
+    padding: '48px',
     color: '#6b7280'
+  },
+  emptyIcon: {
+    fontSize: '48px',
+    display: 'block',
+    marginBottom: '16px'
   }
 };
 
