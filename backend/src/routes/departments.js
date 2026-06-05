@@ -234,7 +234,7 @@ router.post('/', authenticateUser, async (req, res) => {
   }
 });
 
-// GET /api/departments/:id/employees - Listar empleados de un negocio
+// backend/src/routes/departments.js - GET /:id/employees
 router.get('/:id/employees', authenticateUser, async (req, res) => {
   const { id } = req.params;
   
@@ -242,22 +242,62 @@ router.get('/:id/employees', authenticateUser, async (req, res) => {
     const groupId = parseInt(id);
     const members = await pbxApi.getDepartmentMembers(groupId);
     
-    // Filtrar empleados (excluir propietario)
     const owner = members.Members?.find(m => 
       m.Number.endsWith(pbxApi.adminSuffix) && m.Type === 'Extension'
     );
     
-    const employees = members.Members?.filter(m => 
+    const store = await supabaseService.getStoreByPbxGroupId(groupId);
+    if (!store) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+    
+    // Obtener todos los usuarios de PBX en una sola llamada (si hay un endpoint que los liste)
+    // Por ahora, obtenemos los calendarios
+    const calendars = await supabaseService.getCalendarsByStore(store.id);
+    
+    const calendarMap = new Map();
+    (calendars || []).forEach(cal => {
+      calendarMap.set(cal.pbx_user_id, { id: cal.id, user_name: cal.user_name });
+    });
+    
+    // Obtener todos los empleados (excluyendo owner)
+    const employeeMembers = members.Members?.filter(m => 
       m.Type === 'Extension' && 
       m.Id !== owner?.Id &&
       !m.Number.endsWith(pbxApi.adminSuffix)
-    ).map(emp => ({
-      id: emp.Id,
-      name: emp.MemberName,
-      number: emp.Number,
-      email: '', // El email no está disponible en este endpoint
-      role: 'employee'
-    })) || [];
+    ) || [];
+    
+    // Obtener información de PBX para cada número de forma eficiente
+    const employees = [];
+    for (const emp of employeeMembers) {
+      try {
+        const pbxUser = await pbxApi.getUserByNumber(emp.Number);
+        const pbxUserId = pbxUser?.Id;
+        const calendar = calendarMap.get(pbxUserId);
+        
+        employees.push({
+          id: pbxUserId,
+          name: calendar?.user_name || pbxUser?.FirstName + ' ' + pbxUser?.LastName || emp.MemberName,
+          number: emp.Number,
+          email: pbxUser?.EmailAddress || '',
+          role: 'employee',
+          calendar_id: calendar?.id || null
+        });
+      } catch (err) {
+        console.error(`Error fetching user for number ${emp.Number}:`, err);
+        // Aún así agregamos el empleado sin información de PBX
+        employees.push({
+          id: null,
+          name: emp.MemberName,
+          number: emp.Number,
+          email: '',
+          role: 'employee',
+          calendar_id: null
+        });
+      }
+    }
+    
+    console.log(`✅ Found ${employees.length} employees`);
     
     res.json({ employees });
   } catch (error) {
@@ -274,7 +314,7 @@ router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req
   try {
     const groupId = parseInt(id);
     
-    // Obtener el grupo para conocer el business ID
+    // Obtener el grupo y la tienda
     const groups = await pbxApi.listDepartments({ top: 100 });
     const group = groups.value.find(g => g.Id === groupId);
     
@@ -282,7 +322,13 @@ router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req
       return res.status(404).json({ error: 'Department not found' });
     }
     
-    // Extraer business ID del número del propietario
+    // Obtener la tienda asociada
+    const store = await supabaseService.getStoreByPbxGroupId(groupId);
+    if (!store) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+    
+    // Extraer business ID
     let businessId = null;
     const members = await pbxApi.getDepartmentMembers(groupId);
     const owner = members.Members?.find(m => 
@@ -297,7 +343,7 @@ router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req
       return res.status(400).json({ error: 'Cannot determine business ID' });
     }
     
-    // Encontrar siguiente número de empleado disponible AUTOMÁTICAMENTE
+    // Encontrar siguiente número de empleado disponible
     console.log(`🔍 Searching for next available employee number for business ${businessId}...`);
     let employeeNumber;
     
@@ -317,7 +363,7 @@ router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req
       return res.status(400).json({ error: 'Email already registered' });
     }
     
-    // Crear usuario empleado
+    // Crear usuario empleado en PBX
     const pbxUser = await pbxApi.createUser({
       firstName,
       lastName,
@@ -327,7 +373,7 @@ router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req
       language: group.Language || 'ES'
     });
     
-    // Asignar rol users
+    // Asignar rol users en PBX
     await pbxApi.assignRoleToUser(pbxUser.Id, groupId, 'users');
     
     // Registrar relación en Supabase
@@ -338,13 +384,42 @@ router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req
       'employee'
     );
     
+    // Crear calendario para el empleado
+    const calendar = await supabaseService.createCalendar({
+      store_id: store.id,
+      pbx_user_id: pbxUser.Id,
+      user_name: `${firstName} ${lastName}`,
+      user_email: email,
+      timezone: 'America/Mexico_City',
+      appointment_duration: 30
+    });
+    
+    // Crear horarios por defecto (Lunes a Viernes, 9am - 6pm)
+    const defaultWorkingHours = [
+      { day_of_week: 1, start_time: '09:00', end_time: '18:00', is_working_day: true },
+      { day_of_week: 2, start_time: '09:00', end_time: '18:00', is_working_day: true },
+      { day_of_week: 3, start_time: '09:00', end_time: '18:00', is_working_day: true },
+      { day_of_week: 4, start_time: '09:00', end_time: '18:00', is_working_day: true },
+      { day_of_week: 5, start_time: '09:00', end_time: '18:00', is_working_day: true },
+      { day_of_week: 6, start_time: '10:00', end_time: '14:00', is_working_day: true },  // Sábado medio día
+      { day_of_week: 0, start_time: '00:00', end_time: '00:00', is_working_day: false }   // Domingo cerrado
+    ];
+    
+    for (const hours of defaultWorkingHours) {
+      await supabaseService.createWorkingHours({
+        calendar_id: calendar.id,
+        ...hours
+      });
+    }
+    
     res.status(201).json({
       id: pbxUser.Id,
       name: `${firstName} ${lastName}`,
       email: email,
       number: employeeNumber,
       extension: employeeNumber,
-      role: 'users'
+      role: 'users',
+      calendar_id: calendar.id
     });
     
   } catch (error) {

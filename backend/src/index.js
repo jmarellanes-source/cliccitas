@@ -31,6 +31,7 @@ const morgan = require('morgan');
 const departmentRoutes = require('./routes/departments');
 const authRoutes = require('./routes/auth');
 const storeRoutes = require('./routes/stores');
+const calendarRoutes = require('./routes/calendar');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -74,6 +75,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/auth', authRoutes); 
 app.use('/api/stores', storeRoutes);
+app.use('/api/calendar', calendarRoutes);
 
 // 404 handler
 app.use((req, res) => {

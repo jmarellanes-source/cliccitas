@@ -225,7 +225,252 @@ class SupabaseService {
     return true;
   }
 
+  // backend/src/services/supabase.js - Agregar estos métodos para los calendarios
+  async getStoreByPbxGroupId(pbxGroupId) {
+    const { data, error } = await supabaseAdmin
+      .from('stores')
+      .select('*')
+      .eq('pbx_group_id', pbxGroupId)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  }
+
+  async getStoreBySlug(slug) {
+    const { data, error } = await supabaseAdmin
+      .from('stores')
+      .select('*')
+      .eq('slug', slug)
+      .eq('is_active', true)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  }
+
+  // Calendar methods
+  async createCalendar(calendarData) {
+    const { data, error } = await supabaseAdmin
+      .from('calendars')
+      .insert({
+        store_id: calendarData.store_id,
+        pbx_user_id: calendarData.pbx_user_id,
+        user_name: calendarData.user_name,
+        user_email: calendarData.user_email,
+        timezone: calendarData.timezone || 'America/Mexico_City',
+        appointment_duration: calendarData.appointment_duration || 30,
+        break_between_appointments: calendarData.break_between_appointments || 0,
+        is_active: true
+      })
+      .select()
+      .single();
+    
+    if (error) throw new Error(`Failed to create calendar: ${error.message}`);
+    return data;
+  }
+
+  async getCalendarsByStore(storeId) {
+    const { data, error } = await supabaseAdmin
+      .from('calendars')
+      .select('*')
+      .eq('store_id', storeId)
+      .eq('is_active', true);
+    
+    if (error) throw new Error(`Failed to get calendars: ${error.message}`);
+    return data;
+  }
+
+  async getCalendarByPbxUserId(storeId, pbxUserId) {
+    const { data, error } = await supabaseAdmin
+      .from('calendars')
+      .select('*')
+      .eq('store_id', storeId)
+      .eq('pbx_user_id', pbxUserId)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  }
+
+  async updateCalendar(calendarId, updates) {
+    const { data, error } = await supabaseAdmin
+      .from('calendars')
+      .update(updates)
+      .eq('id', calendarId)
+      .select()
+      .single();
+    
+    if (error) throw new Error(`Failed to update calendar: ${error.message}`);
+    return data;
+  }
+
+  // Working Hours methods
+  async createWorkingHours(hoursData) {
+    const { data, error } = await supabaseAdmin
+      .from('working_hours')
+      .insert({
+        calendar_id: hoursData.calendar_id,
+        day_of_week: hoursData.day_of_week,
+        start_time: hoursData.start_time,
+        end_time: hoursData.end_time,
+        is_working_day: hoursData.is_working_day
+      })
+      .select()
+      .single();
+    
+    if (error) throw new Error(`Failed to create working hours: ${error.message}`);
+    return data;
+  }
+
+  async getWorkingHoursByCalendar(calendarId) {
+    const { data, error } = await supabaseAdmin
+      .from('working_hours')
+      .select('*')
+      .eq('calendar_id', calendarId)
+      .order('day_of_week');
+    
+    if (error) throw new Error(`Failed to get working hours: ${error.message}`);
+    return data;
+  }
+
+  async updateWorkingHours(hoursId, updates) {
+    const { data, error } = await supabaseAdmin
+      .from('working_hours')
+      .update(updates)
+      .eq('id', hoursId)
+      .select()
+      .single();
+    
+    if (error) throw new Error(`Failed to update working hours: ${error.message}`);
+    return data;
+  }
+
+  // Exceptions methods
+  async createException(exceptionData) {
+    const { data, error } = await supabaseAdmin
+      .from('exceptions')
+      .insert({
+        calendar_id: exceptionData.calendar_id,
+        exception_date: exceptionData.exception_date,
+        is_available: exceptionData.is_available,
+        start_time: exceptionData.start_time || null,
+        end_time: exceptionData.end_time || null,
+        reason: exceptionData.reason || null
+      })
+      .select()
+      .single();
+    
+    if (error) throw new Error(`Failed to create exception: ${error.message}`);
+    return data;
+  }
+
+  async getExceptionsByCalendar(calendarId, startDate, endDate) {
+    let query = supabaseAdmin
+      .from('exceptions')
+      .select('*')
+      .eq('calendar_id', calendarId);
+    
+    if (startDate) {
+      query = query.gte('exception_date', startDate);
+    }
+    if (endDate) {
+      query = query.lte('exception_date', endDate);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) throw new Error(`Failed to get exceptions: ${error.message}`);
+    return data;
+  }
+
+  // Appointments methods
+  async createAppointment(appointmentData) {
+    const { data, error } = await supabaseAdmin
+      .from('appointments')
+      .insert({
+        store_id: appointmentData.store_id,
+        calendar_id: appointmentData.calendar_id,
+        customer_name: appointmentData.customer_name,
+        customer_email: appointmentData.customer_email,
+        customer_phone: appointmentData.customer_phone || null,
+        start_time: appointmentData.start_time,
+        end_time: appointmentData.end_time,
+        status: appointmentData.status || 'pending',
+        notes: appointmentData.notes || null
+      })
+      .select()
+      .single();
+    
+    if (error) throw new Error(`Failed to create appointment: ${error.message}`);
+    return data;
+  }
+
+  async getAppointmentsByCalendar(calendarId, startDate, endDate) {
+    let query = supabaseAdmin
+      .from('appointments')
+      .select('*')
+      .eq('calendar_id', calendarId);
+    
+    if (startDate) {
+      query = query.gte('start_time', startDate);
+    }
+    if (endDate) {
+      query = query.lte('end_time', endDate);
+    }
+    
+    const { data, error } = await query.order('start_time');
+    
+    if (error) throw new Error(`Failed to get appointments: ${error.message}`);
+    return data;
+  }
+
+  async updateAppointment(appointmentId, updates) {
+    const { data, error } = await supabaseAdmin
+      .from('appointments')
+      .update(updates)
+      .eq('id', appointmentId)
+      .select()
+      .single();
+    
+    if (error) throw new Error(`Failed to update appointment: ${error.message}`);
+    return data;
+  }
+
+  // Services methods
+  async createService(serviceData) {
+    const { data, error } = await supabaseAdmin
+      .from('services')
+      .insert({
+        store_id: serviceData.store_id,
+        name: serviceData.name,
+        description: serviceData.description || null,
+        duration: serviceData.duration,
+        price: serviceData.price || null,
+        color: serviceData.color || '#3B82F6',
+        is_active: true
+      })
+      .select()
+      .single();
+    
+    if (error) throw new Error(`Failed to create service: ${error.message}`);
+    return data;
+  }
+
+  async getServicesByStore(storeId) {
+    const { data, error } = await supabaseAdmin
+      .from('services')
+      .select('*')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+      .order('name');
+    
+    if (error) throw new Error(`Failed to get services: ${error.message}`);
+    return data;
+  }
+
 }
+
 
 // Exportar una instancia única del servicio
 module.exports = new SupabaseService();

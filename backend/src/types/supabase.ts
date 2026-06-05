@@ -14,6 +14,66 @@ export type Database = {
   }
   public: {
     Tables: {
+      appointments: {
+        Row: {
+          calendar_id: string
+          created_at: string | null
+          customer_email: string
+          customer_name: string
+          customer_phone: string | null
+          end_time: string
+          id: string
+          notes: string | null
+          start_time: string
+          status: string | null
+          store_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          calendar_id: string
+          created_at?: string | null
+          customer_email: string
+          customer_name: string
+          customer_phone?: string | null
+          end_time: string
+          id?: string
+          notes?: string | null
+          start_time: string
+          status?: string | null
+          store_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          calendar_id?: string
+          created_at?: string | null
+          customer_email?: string
+          customer_name?: string
+          customer_phone?: string | null
+          end_time?: string
+          id?: string
+          notes?: string | null
+          start_time?: string
+          status?: string | null
+          store_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointments_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: false
+            referencedRelation: "calendars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       business_creation_log: {
         Row: {
           business_name: string
@@ -46,6 +106,97 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      calendars: {
+        Row: {
+          appointment_duration: number | null
+          break_between_appointments: number | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          pbx_user_id: number
+          store_id: string
+          timezone: string | null
+          updated_at: string | null
+          user_email: string
+          user_name: string
+        }
+        Insert: {
+          appointment_duration?: number | null
+          break_between_appointments?: number | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          pbx_user_id: number
+          store_id: string
+          timezone?: string | null
+          updated_at?: string | null
+          user_email: string
+          user_name: string
+        }
+        Update: {
+          appointment_duration?: number | null
+          break_between_appointments?: number | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          pbx_user_id?: number
+          store_id?: string
+          timezone?: string | null
+          updated_at?: string | null
+          user_email?: string
+          user_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendars_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exceptions: {
+        Row: {
+          calendar_id: string
+          created_at: string | null
+          end_time: string | null
+          exception_date: string
+          id: string
+          is_available: boolean
+          reason: string | null
+          start_time: string | null
+        }
+        Insert: {
+          calendar_id: string
+          created_at?: string | null
+          end_time?: string | null
+          exception_date: string
+          id?: string
+          is_available: boolean
+          reason?: string | null
+          start_time?: string | null
+        }
+        Update: {
+          calendar_id?: string
+          created_at?: string | null
+          end_time?: string | null
+          exception_date?: string
+          id?: string
+          is_available?: boolean
+          reason?: string | null
+          start_time?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exceptions_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: false
+            referencedRelation: "calendars"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       products: {
         Row: {
@@ -88,6 +239,53 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      services: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          description: string | null
+          duration: number
+          id: string
+          is_active: boolean | null
+          name: string
+          price: number | null
+          store_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          duration: number
+          id?: string
+          is_active?: boolean | null
+          name: string
+          price?: number | null
+          store_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          duration?: number
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          price?: number | null
+          store_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "services_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stores: {
         Row: {
@@ -178,6 +376,47 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      working_hours: {
+        Row: {
+          calendar_id: string
+          created_at: string | null
+          day_of_week: number
+          end_time: string
+          id: string
+          is_working_day: boolean | null
+          start_time: string
+          updated_at: string | null
+        }
+        Insert: {
+          calendar_id: string
+          created_at?: string | null
+          day_of_week: number
+          end_time: string
+          id?: string
+          is_working_day?: boolean | null
+          start_time: string
+          updated_at?: string | null
+        }
+        Update: {
+          calendar_id?: string
+          created_at?: string | null
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          is_working_day?: boolean | null
+          start_time?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "working_hours_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: false
+            referencedRelation: "calendars"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

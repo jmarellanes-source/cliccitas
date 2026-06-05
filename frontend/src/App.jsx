@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
+import AdminCalendar from './pages/AdminCalendar';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -18,6 +19,11 @@ function App() {
           <Route path="/dashboard" element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/:slug/admin" element={
+            <ProtectedRoute>
+              <AdminCalendar />
             </ProtectedRoute>
           } />
           <Route path="/" element={<Navigate to="/dashboard" />} />

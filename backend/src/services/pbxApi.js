@@ -288,6 +288,14 @@ class PbxApiService {
     }
   }
 
+  async getUserByNumber(Number) {
+    const result = await this.request(
+      'GET',
+      `/xapi/v1/Users?$filter=Number eq '${Number}'&$top=1`
+    );
+    return result.value && result.value.length > 0 ? result.value[0] : null;
+  }
+
   async updateDepartment(groupId, updates) {
     return this.request('PATCH', `/xapi/v1/Groups(${groupId})`, updates);
   }
