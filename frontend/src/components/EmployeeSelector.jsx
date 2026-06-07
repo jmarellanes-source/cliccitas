@@ -2,7 +2,23 @@
 function EmployeeSelector({ employees, selectedEmployee, onSelect, currentUserRole }) {
   if (currentUserRole !== 'owner') {
     return null;
-  }
+  } 
+
+  const handleSelectChange = (e) => {
+    const selectedValue = e.target.value;
+    console.log('Selected value:', selectedValue);
+    
+    // Buscar por id, asegurando comparación correcta (string vs number)
+    const emp = employees.find(e => String(e.id) === selectedValue);
+    console.log('Found employee:', emp);
+    
+    if (emp) {
+      onSelect(emp);
+    }
+  };
+
+  // Determinar el valor actual del select
+  const currentValue = selectedEmployee?.id ? String(selectedEmployee.id) : '';
 
   return (
     <div style={styles.container}>
@@ -11,16 +27,14 @@ function EmployeeSelector({ employees, selectedEmployee, onSelect, currentUserRo
         <div style={styles.info}>
           <label style={styles.label}>Seleccionar empleado:</label>
           <select
-            value={selectedEmployee?.id || ''}
-            onChange={(e) => {
-              const emp = employees.find(e => e.id === parseInt(e.target.value));
-              onSelect(emp);
-            }}
+            value={currentValue}
+            onChange={handleSelectChange}
             style={styles.select}
           >
+            {/* <option value="" disabled>-- Selecciona un empleado --</option> */}
             {employees.map(emp => (
-              <option key={emp.id} value={emp.id}>
-                {emp.name} - Ext: {emp.number} {emp.calendar_id ? '✅' : '⚠️'}
+              <option key={emp.id} value={String(emp.id)}>
+                {emp.name} - Ext: {emp.number} {emp.role === 'owner' ? '👑' : '👥'} {emp.calendar_id ? '✅' : '⚠️'}
               </option>
             ))}
           </select>
