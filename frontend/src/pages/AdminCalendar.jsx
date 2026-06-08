@@ -55,10 +55,23 @@ function AdminCalendar() {
             setSelectedEmployee(employeesRes.data.employees[0]);
           }
         } else {
+          const employeesRes = await axios.get(
+            `${import.meta.env.VITE_API_URL}/departments/${userStore.pbx_group_id}/employees`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          
+          const myEmployee = employeesRes.data.employees?.find(
+            e => e.id === userStore.pbx_user_id
+          );
+          
+          console.log('👤 My employee record:', myEmployee);
+          
           setSelectedEmployee({
-            id: userStore.pbxUserId,
+            id: userStore.pbx_user_id,
             name: user.user_metadata?.full_name || user.email,
-            number: userStore.ownerNumber
+            number: userStore.ownerNumber,
+            calendar_id: myEmployee?.calendar_id || null,
+            role: 'employee'
           });
         }
       }

@@ -61,6 +61,73 @@ class SupabaseService {
     return data;
   }
 
+  // Invitar a un usuario por email (crea usuario pendiente)
+  async createUserWithConfirmation(email, password, userMetadata = {}) {
+    try {
+      const { data, error } = await this.public.auth.signUp({
+        email: email,
+        password: password,
+        options: {
+          data: userMetadata,
+          emailRedirectTo: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/callback`
+        }
+      });
+      
+      if (error) throw error;
+      
+      console.log(`✅ Confirmation email sent to ${email}`);
+      return { user: data.user, error: null };
+    } catch (error) {
+      console.error('Error creating user:', error);
+      return { user: null, error: error };
+    }
+  }
+
+  async inviteUserByEmail(email, userMetadata = {}) {
+    try {
+      // Opción A: Usar el método admin de Supabase
+      const { data, error } = await this.admin.auth.admin.inviteUserByEmail(email, {
+        data: userMetadata,
+        redirectTo: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/callback`
+      });
+      
+      if (error) throw error;
+      
+      console.log(`✅ Invitation email sent to ${email}`);
+      return { user: data.user, error: null };
+    } catch (error) {
+      console.error('Error inviting user:', error);
+      return { user: null, error: error };
+    }
+  }
+
+  // Para operaciones de solo lectura que pueden respetar RLS
+  async getUserBusinessesbyEmail(email) {
+  // Buscar usuario por email (para obtener ID después de la invitación)
+    try {
+      console.log ("supabase.js buscando correo: ",email)
+      const response = await fetch(`${supabaseUrl}/auth/v1/admin/users?email=${encodeURIComponent(email)}`, {
+        method: 'GET',
+        headers: {
+          'apikey': supabaseSecretKey,
+          'Authorization': `Bearer ${supabaseSecretKey}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to get user');
+      }
+      
+      const data = await response.json();
+      console.log ("supabase.js tamaño de data ", data.length)
+      return data.users?.find(u => u.email === email) || null;
+    } catch (error) {
+      console.error('Error getting user by email:', error);
+      return null;
+    }
+  }
+
+
   async isBusinessOwner(userId, pbxGroupId) {
     const { data, error } = await this.admin
       .from('user_businesses')

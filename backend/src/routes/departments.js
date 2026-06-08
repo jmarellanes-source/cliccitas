@@ -10,6 +10,7 @@ const { slugify, generateBusinessName } = require('../utils/slugify');
 router.use(authenticateUser);
 
 // GET /api/departments - Listar negocios del usuario autenticado
+{/*
 router.get('/', async (req, res) => {
   try {
     // Obtener tiendas del usuario desde Supabase
@@ -78,6 +79,58 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+*/}
+
+router.get('/', authenticateUser, async (req, res) => {
+  try {
+    // Obtener TODOS los negocios donde el usuario tiene rol (owner o employee)
+    const userBusinesses = await supabaseService.getUserBusinesses(req.user.id);
+    
+    const businessesWithDetails = await Promise.all(
+      userBusinesses.map(async (ub) => {
+        try {
+          // Obtener detalles de la tienda desde stores
+          const store = await supabaseService.getStoreByPbxGroupId(ub.pbx_group_id);
+          
+          // Obtener detalles del departamento en PBX
+          const members = await pbxApi.getDepartmentMembers(ub.pbx_group_id);
+          const owner = members.Members?.find(m => 
+            m.Number.endsWith(pbxApi.adminSuffix) && m.Type === 'Extension'
+          );
+          
+          return {
+            id: store?.id,
+            pbx_group_id: ub.pbx_group_id,
+            pbx_user_id: ub.pbx_user_id,
+            name: store?.name,
+            slug: store?.slug,
+            description: store?.description,
+            address: store?.address,
+            phone: store?.phone,
+            theme_color: store?.theme_color,
+            ownerNumber: owner?.Number,
+            role: ub.role,
+            is_active: store?.is_active,
+            url: `/negocio/${store?.slug}`
+          };
+        } catch (error) {
+          console.error(`Error fetching business details:`, error);
+          return {
+            pbx_group_id: ub.pbx_group_id,
+            role: ub.role,
+            error: 'Could not fetch details'
+          };
+        }
+      })
+    );
+    
+    res.json({ businesses: businessesWithDetails });
+  } catch (error) {
+    console.error('Error listing user businesses:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // POST /api/departments - Crear un nuevo negocio
 router.post('/', authenticateUser, async (req, res) => {
@@ -390,8 +443,9 @@ router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req
     if (existingUser) {
       return res.status(400).json({ error: 'Email already registered' });
     }
-    
-    // Crear usuario empleado en PBX
+    console.log("Email verificado , no existe");
+
+    // 2. Crear usuario empleado en PBX
     const pbxUser = await pbxApi.createUser({
       firstName,
       lastName,
@@ -400,21 +454,65 @@ router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req
       number: employeeNumber,
       language: group.Language || 'ES'
     });
+    console.log(`PBX user created: ${pbxUser.Id}`);
     
-    // Asignar rol users en PBX
+    // 3. Asignar rol users en PBX
     await pbxApi.assignRoleToUser(pbxUser.Id, groupId, 'users');
+    console.log(`Role assigned in PBX`);
 
-    // NO crear registro en user_businesses para empleados
-    // Los empleados solo existen en PBX y en la tabla calendars
-    // Registrar relación en Supabase
-    //await supabaseService.linkUserToBusiness(
-    //  req.user.id,
-    //  groupId,
-    //  pbxUser.Id,
-    //  'employee'
-    //);
+    console.log ("Buscando con email: ",email)
+
+    // Verificar si el email ya existe en Supabase Auth
+    let existingAuthUser = await supabaseService.getUserBusinessesbyEmail(email);
+    let authUserId;
     
-    // Crear calendario para el empleado
+    if (existingAuthUser) {
+      // Usuario ya existe
+      authUserId = existingAuthUser.id;
+      console.log(`User already exists in Supabase: ${authUserId}`);
+    } else {
+      // 1. Enviar invitación por email (NO crear usuario directamente)
+      console.log(`Sending invitation to ${email}...`);
+
+      const { user, error: inviteError } = await supabaseService.inviteUserByEmail(email, {
+        full_name: `${firstName} ${lastName}`,
+        role: 'employee',
+        business_name: store.name
+      });
+
+      {/*const { user, error: inviteError } = await supabaseService.createUserWithConfirmation(
+        email,
+        'Th1sPassword%',
+        {
+          full_name: `${firstName} ${lastName}`,
+          role: 'employee',
+          business_name: store.name
+        }
+      );
+      */}
+      
+      if (inviteError) {
+        console.error('Error inviting user:', inviteError);
+        return res.status(500).json({ 
+          error: 'Failed to send invitation',
+          details: inviteError.message 
+        });
+      }
+      
+      authUserId = user.id;
+      console.log(`Invitation sent, user created with ID: ${authUserId}`);
+    }
+    
+    // 4. Crear registro en user_businesses (vincula auth.user con pbx)
+    await supabaseService.linkUserToBusiness(
+      authUserId,      // ← user_id de Supabase Auth
+      groupId,         // pbx_group_id
+      pbxUser.Id,      // pbx_user_id
+      'employee'       // role
+    );
+    console.log(`✅ user_businesses record created`);
+    
+    // 5. Crear calendario para el empleado
     const calendar = await supabaseService.createCalendar({
       store_id: store.id,
       pbx_user_id: pbxUser.Id,
@@ -423,16 +521,17 @@ router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req
       timezone: 'America/Mexico_City',
       appointment_duration: 30
     });
+    console.log(`Calendar created: ${calendar.id}`);
     
-    // Crear horarios por defecto (Lunes a Viernes, 9am - 6pm)
+    // 6. Crear horarios por defecto
     const defaultWorkingHours = [
       { day_of_week: 1, start_time: '09:00', end_time: '18:00', is_working_day: true },
       { day_of_week: 2, start_time: '09:00', end_time: '18:00', is_working_day: true },
       { day_of_week: 3, start_time: '09:00', end_time: '18:00', is_working_day: true },
       { day_of_week: 4, start_time: '09:00', end_time: '18:00', is_working_day: true },
       { day_of_week: 5, start_time: '09:00', end_time: '18:00', is_working_day: true },
-      { day_of_week: 6, start_time: '10:00', end_time: '14:00', is_working_day: true },  // Sábado medio día
-      { day_of_week: 0, start_time: '00:00', end_time: '00:00', is_working_day: false }   // Domingo cerrado
+      { day_of_week: 6, start_time: '10:00', end_time: '14:00', is_working_day: true },
+      { day_of_week: 0, start_time: '00:00', end_time: '00:00', is_working_day: false }
     ];
     
     for (const hours of defaultWorkingHours) {
@@ -441,6 +540,7 @@ router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req
         ...hours
       });
     }
+    console.log(`Working hours created`);
     
     res.status(201).json({
       id: pbxUser.Id,
@@ -448,12 +548,17 @@ router.post('/:id/employees', authenticateUser, requireRole('owner'), async (req
       email: email,
       number: employeeNumber,
       extension: employeeNumber,
-      role: 'users',
-      calendar_id: calendar.id
+      role: 'employee',
+      calendar_id: calendar.id,
+      auth_user_id: authUserId,  // Para que el empleado pueda iniciar sesión
+      credentials: {
+        email: email,
+        password: password  // Mostrar solo en creación
+      }
     });
     
   } catch (error) {
-    console.error('❌ Error adding employee:', error);
+    console.error('Error adding employee:', error);
     res.status(500).json({ error: error.message });
   }
 });
