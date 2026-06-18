@@ -4,6 +4,20 @@ const router = express.Router();
 const supabaseService = require('../services/supabase');
 const { authenticateUser } = require('../middleware/auth');
 
+// Función para crear fecha local (México)
+const createLocalDateTime = (dateStr, timeStr) => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hour, minute] = timeStr.split(':').map(Number);
+  return new Date(year, month - 1, day, hour, minute, 0);
+};
+// Función para generar rango UTC para consultas a la BD
+const getUTCRangeForLocalDate = (dateStr) => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const startUTC = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+  const endUTC = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+  return { startUTC, endUTC };
+};
+
 // Obtener calendarios de una tienda
 router.get('/store/:slug', async (req, res) => {
   const { slug } = req.params;
@@ -56,6 +70,7 @@ router.get('/store/:slug/employees', async (req, res) => {
   }
 });
 
+
 // Obtener horarios disponibles para una fecha específica
 router.get('/:calendarId/available-slots', async (req, res) => {
   const { calendarId } = req.params;
@@ -66,9 +81,15 @@ router.get('/:calendarId/available-slots', async (req, res) => {
       return res.status(400).json({ error: 'Date is required' });
     }
     
-    const targetDate = new Date(date);
+    console.log ("Date en available-slots ",date)
+    //const targetDate = new Date(date);
+    //const dayOfWeek = targetDate.getDay();
+
+    const [year, month, day] = date.split('-').map(Number);
+    // Para el día de semana (usar fecha local)
+    const targetDate = new Date(year, month - 1, day);
     const dayOfWeek = targetDate.getDay();
-    
+
     // 1. Obtener horarios de trabajo para ese día
     const workingHours = await supabaseService.getWorkingHoursByCalendar(calendarId);
     const daySchedule = workingHours.find(h => h.day_of_week === dayOfWeek);
@@ -87,7 +108,7 @@ router.get('/:calendarId/available-slots', async (req, res) => {
     let startTime = daySchedule.start_time;
     let endTime = daySchedule.end_time;
     let isAvailable = true;
-    
+
     // Si hay excepción, aplicar horario especial
     if (exceptions && exceptions.length > 0) {
       const exception = exceptions[0];
@@ -100,11 +121,8 @@ router.get('/:calendarId/available-slots', async (req, res) => {
       }
     }
     
-    // 3. Obtener citas existentes para esta fecha
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+    const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
     
     const appointments = await supabaseService.getAppointmentsByCalendar(
       calendarId,
@@ -160,7 +178,7 @@ router.post('/appointments', async (req, res) => {
     }
     
     // Calcular hora de inicio y fin
-    const startDateTime = new Date(`${appointment_date}T${appointment_time}`);
+    const startDateTime = createLocalDateTime(appointment_date, appointment_time); //Local Time
     const appointmentDuration = duration || calendar.appointment_duration || 30;
     const endDateTime = new Date(startDateTime.getTime() + appointmentDuration * 60000);
     
@@ -173,18 +191,42 @@ router.post('/appointments', async (req, res) => {
       return res.status(400).json({ error: 'Store is closed on this day' });
     }
     
-    // Verificar conflictos
+    // Verificar conflictos usando UTC (para consultar BD)
+    const { startUTC, endUTC } = getUTCRangeForLocalDate(appointment_date);
+    
     const existingAppointments = await supabaseService.getAppointmentsByCalendar(
       calendar_id,
-      startDateTime.toISOString(),
-      endDateTime.toISOString()
+      startUTC.toISOString(),
+      endUTC.toISOString()
     );
     
-    if (existingAppointments && existingAppointments.length > 0) {
+    // Verificar si el slot específico está ocupado (comparar hora local)
+    const targetTimeKey = `${startDateTime.getHours().toString().padStart(2, '0')}:${startDateTime.getMinutes().toString().padStart(2, '0')}`;
+    const isBooked = existingAppointments.some(apt => {
+      const aptUTC = new Date(apt.start_time);
+      const aptHour = aptUTC.getUTCHours();
+      const aptMinute = aptUTC.getUTCMinutes();
+      const aptTimeKey = `${aptHour.toString().padStart(2, '0')}:${aptMinute.toString().padStart(2, '0')}`;
+      return aptTimeKey === targetTimeKey;
+    });
+    
+
+    if (isBooked) {
       return res.status(409).json({ error: 'Time slot is already booked' });
     }
+
+    const startDateTimeUTC = new Date(Date.UTC(
+      startDateTime.getFullYear(),
+      startDateTime.getMonth(),
+      startDateTime.getDate(),
+      startDateTime.getHours(),
+      startDateTime.getMinutes(),
+      0
+    ));
+    const endDateTimeUTC = new Date(startDateTimeUTC.getTime() + appointmentDuration * 60000);
     
-    console.log ("Now, trying to create appointment")
+    console.log("Guardando en BD - UTC:", startDateTimeUTC);    
+
     // Crear la cita
     const appointment = await supabaseService.createAppointment({
       store_id: calendar.store_id,
@@ -192,8 +234,8 @@ router.post('/appointments', async (req, res) => {
       customer_name,
       customer_email,
       customer_phone: customer_phone || null,
-      start_time: startDateTime.toISOString(),
-      end_time: endDateTime.toISOString(),
+      start_time: startDateTimeUTC.toISOString(),
+      end_time: endDateTimeUTC.toISOString(),
       status: 'pending',
       notes: notes || null,
       service_id: service_id || null
@@ -215,8 +257,6 @@ router.post('/appointments', async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating appointment:', error);
-    console.error('Error details:', error.message);
-    console.error('Error stack:', error.stack);
     res.status(500).json({ error: error.message });
   }
 });
@@ -367,28 +407,37 @@ router.get('/by-user/:pbxUserId', authenticateUser, async (req, res) => {
 // Función auxiliar para generar slots de tiempo
 function generateTimeSlots(startTime, endTime, duration, appointments) {
   const slots = [];
-  const start = new Date(`2000-01-01T${startTime}`);
-  const end = new Date(`2000-01-01T${endTime}`);
+
+  // Parsear horas locales (formato "HH:MM:SS")
+  const [startHour, startMinute] = startTime.split(':').map(Number);
+  const [endHour, endMinute] = endTime.split(':').map(Number);
   
-  // Crear conjunto de horarios ocupados
+  // ✅ CORREGIDO: Usar UTC para los cálculos (las citas están en UTC)
+  const start = new Date(Date.UTC(2000, 0, 1, startHour, startMinute, 0));
+  const end = new Date(Date.UTC(2000, 0, 1, endHour, endMinute, 0));
+
+  // Crear conjunto de horarios ocupados (convertir hora UTC a hora local)
   const bookedSlots = new Set();
   appointments.forEach(apt => {
     const aptStart = new Date(apt.start_time);
-    const timeKey = `${aptStart.getHours().toString().padStart(2, '0')}:${aptStart.getMinutes().toString().padStart(2, '0')}`;
+    // La BD guarda en UTC, obtener hora UTC directamente
+    const hours = aptStart.getUTCHours().toString().padStart(2, '0');
+    const minutes = aptStart.getUTCMinutes().toString().padStart(2, '0');
+    const timeKey = `${hours}:${minutes}`;
+    
+    console.log(`Cita UTC: ${apt.start_time} -> Hora: ${timeKey}`);
     bookedSlots.add(timeKey);
   });
-  
+
   let current = new Date(start);
   while (current < end) {
-    const hours = current.getHours().toString().padStart(2, '0');
-    const minutes = current.getMinutes().toString().padStart(2, '0');
+    const hours = current.getUTCHours().toString().padStart(2, '0');
+    const minutes = current.getUTCMinutes().toString().padStart(2, '0');
     const timeSlot = `${hours}:${minutes}`;
-    
     if (!bookedSlots.has(timeSlot)) {
       slots.push(timeSlot);
     }
-    
-    current.setMinutes(current.getMinutes() + duration);
+    current.setUTCMinutes(current.getUTCMinutes() + duration);
   }
   
   return slots;
