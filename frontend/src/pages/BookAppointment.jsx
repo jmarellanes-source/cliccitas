@@ -184,22 +184,6 @@ function BookAppointment() {
     await loadWeekAvailability(emp.id, weekDays);
   };
 
-  useEffect(() => {
-    if (selectedEmployee && selectedDate) {
-      fetchAvailableSlots();
-    }
-  }, [selectedEmployee, selectedDate]);
-
-  // useEffect separado para cuando se solicita recarga manual (misma fecha)
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-
-  useEffect(() => {
-    if (selectedEmployee && selectedDate && refreshTrigger > 0) {
-      console.log("🔄 Refresh manual: Cargando slots para:", selectedDate);
-      fetchAvailableSlots();
-    }
-  }, [refreshTrigger]);
-
   const fetchStoreData = async () => {
     try {
       const storeRes = await axios.get(
@@ -292,23 +276,41 @@ function BookAppointment() {
     });
   };
 
+  // useEffect simplificado - solo depende de selectedEmployee y selectedDate
+  useEffect(() => {
+    if (selectedEmployee && selectedDate) {
+      console.log("Cargando slots para:", selectedDate);
+      fetchAvailableSlots();
+    }
+  }, [selectedEmployee, selectedDate]);  // ← Eliminar forceRefresh de dependencias
+
   const handleDateSelect = (dateStr) => {
-
-    // Limpiar slots anteriores
-    setAvailableSlots([]);
-    setSelectedSlot('');
-    setLoading(true);  // Mostrar loading
-
+    console.log('Selected date:', dateStr, 'Current selectedDate:', selectedDate);
+    
+    // SOLUCIÓN: Resetear la fecha a null y luego establecerla de nuevo
+    // Esto fuerza el useEffect a ejecutarse
     if (selectedDate === dateStr) {
-      if (selectedEmployee && selectedDate) {
-        setRefreshTrigger(prev => prev + 1);  // Disparar recarga
-      }
+      console.log("Misma fecha, resetear y recargar...");
+      setSelectedDate(null);  // Primero resetear
+      setAvailableSlots([]);
+      setSelectedSlot('');
+      setLoading(true);
+      
+      // En el próximo tick, establecer la fecha de nuevo
+      setTimeout(() => {
+        setSelectedDate(dateStr);
+        setCurrentStep(3);
+      }, 10);
       return;
-    }  
+    }
+    
+    // Fecha diferente
     setSelectedDate(dateStr);
     setCurrentStep(3);
+    setAvailableSlots([]);
+    setSelectedSlot('');
   };
-  
+    
   const handleSlotSelect = (slot) => {
     setSelectedSlot(slot);
     setCurrentStep(4);
@@ -893,7 +895,7 @@ const styles = {
   },
   weekDayBtnSelected: {
     backgroundColor: '#3B82F6',
-    borderColor: '#3B82F6',
+    border: '#3B82F6',
     color: 'white'
   },
   weekDayName: {
@@ -1011,7 +1013,7 @@ const styles = {
   },
   slotBtnSelected: {
     backgroundColor: '#10b981',
-    borderColor: '#10b981',
+    border: '#10b981',
     color: 'white'
   },
   noSlots: {
