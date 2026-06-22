@@ -50,9 +50,9 @@ async function testAPI() {
       const departments = await axios.get(`${BASE_URL}/api/departments`, {
         headers: { Authorization: `Bearer ${authToken}` }
       });
-      console.log('   ✅ Departamentos obtenidos:', departments.data);
+      console.log('   Departamentos obtenidos:', departments.data);
     } catch (error) {
-      console.log('   ❌', error.response?.data?.error || error.message);
+      console.log(' ', error.response?.data?.error || error.message);
     }
 
     // 5. Crear negocio
@@ -68,13 +68,13 @@ async function testAPI() {
       }, {
         headers: { Authorization: `Bearer ${authToken}` }
       });
-      console.log('   ✅ Negocio creado:', business.data);
+      console.log('Negocio creado:', business.data);
     } catch (error) {
-      console.log('   ❌', error.response?.data?.error || error.message);
+      console.log(' ', error.response?.data?.error || error.message);
     }
   }
 
-  console.log('\n✅ Pruebas completadas');
+  console.log('\n Pruebas completadas');
 }
 
 testAPI();
