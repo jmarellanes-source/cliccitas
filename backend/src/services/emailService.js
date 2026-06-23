@@ -13,18 +13,27 @@ const transporter = nodemailer.createTransport({
 });
 
 // Función para enviar correo de confirmación
-const sendAppointmentConfirmation = async (appointment, token, tokenExpiresAt, storeName, employeeName) => {
+const sendAppointmentConfirmation = async (appointment, start_time_local, token, tokenExpiresAt, storeName, employeeName) => {
   const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   const link = `${baseUrl}/mis-citas?token=${token}`;
   
-  const formattedDate = new Date(appointment.start_time).toLocaleDateString('es-MX', {
+  console.log("Hora local recibida:", start_time_local);
+
+  // Validar que startDateTime es un objeto Date válido
+  let dateToUse = start_time_local;
+  if (!(start_time_local instanceof Date) || isNaN(start_time_local.getTime())) {
+    console.warn('Start_time_local no es válido, usando fallback UTC');
+    dateToUse = new Date(appointment.start_time);
+  }
+
+  const formattedDate = dateToUse.toLocaleDateString('es-MX', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric'
   });
   
-  const formattedTime = new Date(appointment.start_time).toLocaleTimeString('es-MX', {
+  const formattedTime = dateToUse.toLocaleTimeString('es-MX', {
     hour: '2-digit',
     minute: '2-digit'
   });

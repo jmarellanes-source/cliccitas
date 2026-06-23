@@ -278,6 +278,7 @@ router.post('/appointments', async (req, res) => {
     try {
       await sendAppointmentConfirmation(
         appointment,                 // Datos de la cita
+        startDateTime,               // Hora local de la cita
         token,                       // Token para gestionar
         expiresAt,                   // Fecha de expiración
         store.name,                  // ✅ Nombre de la tienda (ahora definido)
