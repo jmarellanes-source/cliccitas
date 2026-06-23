@@ -3,7 +3,13 @@ const express = require('express');
 const router = express.Router();
 const supabaseService = require('../services/supabase');
 const { authenticateUser } = require('../middleware/auth');
+const { sendAppointmentConfirmation } = require('../services/emailService');
+const crypto = require('crypto');
 
+// Función para generar token
+const generateToken = () => {
+  return crypto.randomBytes(32).toString('hex');
+};
 // Función para crear fecha local (México)
 const createLocalDateTime = (dateStr, timeStr) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -166,15 +172,21 @@ router.post('/appointments', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     
-    // Obtener el calendario
+    // 1. Obtener el calendario (incluyendo employee_name)
     const { data: calendar, error: calendarError } = await supabaseService.admin
       .from('calendars')
-      .select('store_id, appointment_duration')
+      .select('store_id, appointment_duration, user_name')  // ✅ Agregar user_name
       .eq('id', calendar_id)
       .single();
     
     if (calendarError || !calendar) {
       return res.status(404).json({ error: 'Calendar not found' });
+    }
+    
+    // 2. Obtener la tienda (para el nombre en el email)
+    const store = await supabaseService.getStoreById(calendar.store_id);
+    if (!store) {
+      return res.status(404).json({ error: 'Store not found' });
     }
     
     // Calcular hora de inicio y fin
@@ -241,8 +253,42 @@ router.post('/appointments', async (req, res) => {
       service_id: service_id || null
     });
     
-    // TODO: Enviar email de confirmación al cliente y notificación al empleado
+    // 7. GENERAR TOKEN PARA EL CLIENTE
+    const token = generateToken();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30); // Token válido por 30 días
     
+    // Guardar token en la tabla appointment_tokens
+    const { error: tokenError } = await supabaseService.admin
+      .from('appointment_tokens')
+      .insert({
+        appointment_id: appointment.id,
+        token: token,
+        email: customer_email,
+        expires_at: expiresAt.toISOString(),
+        is_used: false
+      });
+    
+    if (tokenError) {
+      console.error('Error saving token:', tokenError);
+      // No fallamos la creación de la cita, solo logueamos el error
+    }
+    
+    // 8. ✅ ENVIAR EMAIL DE CONFIRMACIÓN
+    try {
+      await sendAppointmentConfirmation(
+        appointment,                 // Datos de la cita
+        token,                       // Token para gestionar
+        expiresAt,                   // Fecha de expiración
+        store.name,                  // ✅ Nombre de la tienda (ahora definido)
+        calendar.user_name || 'el profesional'  // ✅ Nombre del empleado
+      );
+      console.log(`Email enviado a ${customer_email}`);
+    } catch (emailError) {
+      console.error('Error sending email:', emailError);
+      // No fallamos la creación de la cita si el email falla
+    }
+
     res.status(201).json({
       success: true,
       appointment: {
