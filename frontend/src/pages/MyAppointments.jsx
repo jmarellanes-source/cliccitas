@@ -4,7 +4,7 @@ import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 
 function MyAppointments() { 
-  const { slug } = useParams();  // ← Obtener slug de la URL
+  const { slug } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token');
@@ -38,22 +38,65 @@ function MyAppointments() {
     }
   };
 
-  const handleAction = async (action, data = {}) => {
+  const handleCancel = async () => {
+    if (!confirm('¿Estás seguro de que deseas cancelar esta cita?')) return;
+    
     setActionLoading(true);
     try {
       const res = await axios.patch(
-        `${import.meta.env.VITE_API_URL}/appointments/my-appointments/confirm`,
-        { token, action, ...data }
+        `${import.meta.env.VITE_API_URL}/appointments/my-appointments/cancel`,
+        { token }
       );
       setSuccess(res.data.message);
       setAppointment(res.data.appointment);
       setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
-      setError(error.response?.data?.error || 'Error al procesar la solicitud');
+      setError(error.response?.data?.error || 'Error al cancelar la cita');
       setTimeout(() => setError(''), 3000);
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const getStatusInfo = (status) => {
+    const statusMap = {
+      pending: { 
+        text: 'En revisión', 
+        color: '#f59e0b', 
+        bg: '#fef3c7',
+        icon: '⏳',
+        message: 'Tu cita está siendo revisada por el profesional. Recibirás un correo de confirmación en breve.'
+      },
+      confirmed: { 
+        text: 'Confirmada', 
+        color: '#10b981', 
+        bg: '#d1fae5',
+        icon: '✅',
+        message: '¡Tu cita ha sido confirmada! Por favor, llega puntual.'
+      },
+      cancelled: { 
+        text: 'Cancelada', 
+        color: '#ef4444', 
+        bg: '#fee2e2',
+        icon: '❌',
+        message: 'Esta cita ha sido cancelada.'
+      },
+      completed: { 
+        text: 'Completada', 
+        color: '#6b7280', 
+        bg: '#f3f4f6',
+        icon: '✓',
+        message: 'Esta cita ya fue completada.'
+      },
+      rescheduled: { 
+        text: 'Reprogramada', 
+        color: '#8b5cf6', 
+        bg: '#ede9fe',
+        icon: '🔄',
+        message: 'Esta cita ha sido reprogramada. Revisa los nuevos detalles.'
+      }
+    };
+    return statusMap[status] || statusMap.pending;
   };
 
   if (loading) {
@@ -95,24 +138,22 @@ function MyAppointments() {
     );
   }
 
-  const getStatusBadge = (status) => {
-    const statusMap = {
-      pending: { text: 'Pendiente', color: '#f59e0b', bg: '#fef3c7' },
-      confirmed: { text: 'Confirmada', color: '#10b981', bg: '#d1fae5' },
-      cancelled: { text: 'Cancelada', color: '#ef4444', bg: '#fee2e2' },
-      completed: { text: 'Completada', color: '#6b7280', bg: '#f3f4f6' },
-      no_show: { text: 'No asistió', color: '#dc2626', bg: '#fee2e2' }
-    };
-    const s = statusMap[status] || statusMap.pending;
-    return <span style={{ ...styles.badge, backgroundColor: s.bg, color: s.color }}>{s.text}</span>;
-  };
+  const statusInfo = getStatusInfo(appointment.status);
+  const canCancel = appointment.status === 'pending' || appointment.status === 'confirmed';
 
   return (
     <div style={styles.container}>
       <div style={styles.card}>
         <div style={styles.header}>
           <h1>📅 Mi Cita</h1>
-          {getStatusBadge(appointment.status)}
+          <div style={{ ...styles.badge, backgroundColor: statusInfo.bg, color: statusInfo.color }}>
+            {statusInfo.icon} {statusInfo.text}
+          </div>
+        </div>
+
+        {/* Mensaje de estado */}
+        <div style={styles.statusMessage}>
+          <p>{statusInfo.message}</p>
         </div>
 
         <div style={styles.details}>
@@ -157,35 +198,25 @@ function MyAppointments() {
         {success && <div style={styles.successMessage}>{success}</div>}
 
         <div style={styles.actions}>
-          {appointment.status === 'pending' && (
-            <>
-              <button
-                onClick={() => handleAction('confirm')}
-                disabled={actionLoading}
-                style={styles.confirmBtn}
-              >
-                ✅ Confirmar Cita
-              </button>
-              <button
-                onClick={() => handleAction('cancel')}
-                disabled={actionLoading}
-                style={styles.cancelBtn}
-              >
-                ❌ Cancelar Cita
-              </button>
-            </>
-          )}
-          {appointment.status === 'confirmed' && (
+          {canCancel && appointment.status !== 'cancelled' && (
             <button
-              onClick={() => handleAction('cancel')}
+              onClick={handleCancel}
               disabled={actionLoading}
               style={styles.cancelBtn}
             >
               ❌ Cancelar Cita
             </button>
           )}
-          <button onClick={() => window.location.href = '/'} style={styles.homeBtn}>
-            Volver al inicio
+          {appointment.status === 'cancelled' && (
+            <button
+              onClick={() => window.location.href = `/${slug}/agendar`}
+              style={styles.rescheduleBtn}
+            >
+              📅 Agendar nueva cita
+            </button>
+          )}
+          <button onClick={() => window.location.href = `/${slug}`} style={styles.homeBtn}>
+            Volver a la tienda
           </button>
         </div>
       </div>
@@ -215,9 +246,16 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '24px',
+    marginBottom: '16px',
     paddingBottom: '16px',
     borderBottom: '1px solid #e5e7eb'
+  },
+  statusMessage: {
+    backgroundColor: '#f0f9ff',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    marginBottom: '20px',
+    borderLeft: '4px solid #3B82F6'
   },
   details: {
     display: 'flex',
@@ -252,17 +290,6 @@ const styles = {
     gap: '12px',
     marginTop: '16px'
   },
-  confirmBtn: {
-    padding: '12px',
-    backgroundColor: '#10b981',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '16px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'opacity 0.2s'
-  },
   cancelBtn: {
     padding: '12px',
     backgroundColor: '#ef4444',
@@ -271,8 +298,17 @@ const styles = {
     borderRadius: '8px',
     fontSize: '16px',
     fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'opacity 0.2s'
+    cursor: 'pointer'
+  },
+  rescheduleBtn: {
+    padding: '12px',
+    backgroundColor: '#8b5cf6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '16px',
+    fontWeight: '600',
+    cursor: 'pointer'
   },
   homeBtn: {
     padding: '12px',
@@ -282,8 +318,7 @@ const styles = {
     borderRadius: '8px',
     fontSize: '16px',
     fontWeight: '500',
-    cursor: 'pointer',
-    transition: 'opacity 0.2s'
+    cursor: 'pointer'
   },
   successMessage: {
     backgroundColor: '#d1fae5',

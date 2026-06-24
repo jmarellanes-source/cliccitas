@@ -16,10 +16,19 @@ function AdminAppointments() {
   const [filter, setFilter] = useState('all');
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  // Agregar estado para el modal de reprogramación
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [rescheduleData, setRescheduleData] = useState({
+    new_date: '',
+    new_time: '',
+    duration: 30
+  });
+
 
   useEffect(() => {
     fetchAppointments();
   }, [slug, filter]);
+
 
   const fetchAppointments = async () => {
     setLoading(true);
@@ -90,6 +99,28 @@ function AdminAppointments() {
   if (loading) {
     return <div style={styles.loading}>Cargando citas...</div>;
   }
+
+  // Función para reprogramar
+  const handleReschedule = async () => {
+    try {
+      await axios.patch(
+        `${import.meta.env.VITE_API_URL}/appointments/${selectedAppointment.id}/reschedule`,
+        rescheduleData,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      setSuccess('Cita reprogramada correctamente');
+      setTimeout(() => setSuccess(''), 3000);
+      fetchAppointments();
+      setShowRescheduleModal(false);
+      setShowModal(false);
+    } catch (error) {
+      console.error('Error rescheduling:', error);
+      setError(error.response?.data?.error || 'Error al reprogramar');
+      setTimeout(() => setError(''), 3000);
+    }
+  };
+
 
   return (
     <div style={styles.container}>
@@ -213,15 +244,17 @@ function AdminAppointments() {
                       onClick={() => handleUpdateAppointment(selectedAppointment.id, { status: 'confirmed' })}
                       style={styles.confirmBtn}
                     >
-                      ✅ Confirmar
+                      ✅ Confirmar cita
                     </button>
                   )}
-                  {selectedAppointment.status !== 'completed' && (
+                  {selectedAppointment.status !== 'rescheduled' && (
                     <button
-                      onClick={() => handleUpdateAppointment(selectedAppointment.id, { status: 'completed' })}
+                      onClick={() => {
+                        setShowRescheduleModal(true);
+                      }}
                       style={styles.completeBtn}
                     >
-                      ✓ Completar
+                      ✓ Cambiar horario o tiempo de la cita
                     </button>
                   )}
                   {selectedAppointment.status !== 'cancelled' && (
@@ -229,7 +262,7 @@ function AdminAppointments() {
                       onClick={() => handleUpdateAppointment(selectedAppointment.id, { status: 'cancelled' })}
                       style={styles.cancelBtn}
                     >
-                      ❌ Cancelar
+                      ❌ Rechazar Cita
                     </button>
                   )}
                 </div>
@@ -259,6 +292,58 @@ function AdminAppointments() {
           </div>
         </div>
       )}
+
+      {/* modal de reprogramación*/}
+      {showRescheduleModal && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modal}>
+            <div style={styles.modalHeader}>
+              <h3>Reprogramar Cita</h3>
+              <button onClick={() => setShowRescheduleModal(false)} style={styles.closeBtn}>×</button>
+            </div>
+            <div style={styles.modalBody}>
+              <div style={styles.formGroup}>
+                <label>Nueva Fecha</label>
+                <input
+                  type="date"
+                  value={rescheduleData.new_date}
+                  onChange={(e) => setRescheduleData({...rescheduleData, new_date: e.target.value})}
+                  style={styles.input}
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label>Nueva Hora</label>
+                <input
+                  type="time"
+                  value={rescheduleData.new_time}
+                  onChange={(e) => setRescheduleData({...rescheduleData, new_time: e.target.value})}
+                  style={styles.input}
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label>Duración (minutos)</label>
+                <input
+                  type="number"
+                  value={rescheduleData.duration}
+                  onChange={(e) => setRescheduleData({...rescheduleData, duration: parseInt(e.target.value)})}
+                  style={styles.input}
+                  min="15"
+                  step="15"
+                />
+              </div>
+              <div style={styles.modalButtons}>
+                <button onClick={() => setShowRescheduleModal(false)} style={styles.cancelBtn}>
+                  Cancelar
+                </button>
+                <button onClick={handleReschedule} style={styles.confirmBtn}>
+                  Reprogramar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
