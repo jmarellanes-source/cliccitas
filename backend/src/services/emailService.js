@@ -24,11 +24,11 @@ const sendAppointmentConfirmation = async (appointment, start_time_local, token,
   const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   // ✅ Ya no usamos el token en este email, solo en el segundo correo
   
-  console.log("📧 Hora local recibida (revisión):", start_time_local);
+  console.log("Hora local recibida (revisión):", start_time_local);
 
   let dateToUse = start_time_local;
   if (!(start_time_local instanceof Date) || isNaN(start_time_local.getTime())) {
-    console.warn('⚠️ start_time_local no es válido, usando fallback UTC');
+    console.warn('start_time_local no es válido, usando fallback UTC');
     dateToUse = new Date(appointment.start_time);
   }
 
@@ -93,15 +93,15 @@ const sendAppointmentConfirmation = async (appointment, start_time_local, token,
     const info = await transporter.sendMail({
       from: process.env.SMTP_FROM || 'noreply@tutienda.com',
       to: appointment.customer_email,
-      subject: `📅 Cita en revisión - ${storeName}`,
+      subject: `Cita en revisión - ${storeName}`,
       html: emailHtml,
       text: `Hola ${appointment.customer_name},\n\nTu cita ha sido enviada para revisión.\n\nFecha: ${formattedDate}\nHora: ${formattedTime}\n\nRecibirás un correo de confirmación cuando sea aprobada.`
     });
     
-    console.log('✅ Email de "en revisión" enviado:', info.messageId);
+    console.log('Email de "en revisión" enviado:', info.messageId);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('❌ Error enviando email de revisión:', error);
+    console.error('Error enviando email de revisión:', error);
     return { success: false, error: error.message };
   }
 };
@@ -148,12 +148,12 @@ const sendAppointmentConfirmed = async (appointment, startDateTime, storeName, e
       });
     
     if (tokenError) {
-      console.error('❌ Error guardando token de cancelación:', tokenError);
+      console.error('Error guardando token de cancelación:', tokenError);
     } else {
-      console.log('✅ Token de cancelación generado:', token);
+      console.log('Token de cancelación generado:', token);
     }
   } catch (error) {
-    console.error('❌ Error guardando token:', error);
+    console.error('Error guardando token:', error);
   }
   
   const link = `${baseUrl}/mis-citas?token=${token}`;

@@ -21,9 +21,11 @@ function AdminAppointments() {
   const [rescheduleData, setRescheduleData] = useState({
     new_date: '',
     new_time: '',
-    duration: 30
+    duration: 60
   });
-
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState('');
 
   useEffect(() => {
     fetchAppointments();
@@ -100,20 +102,55 @@ function AdminAppointments() {
     return <div style={styles.loading}>Cargando citas...</div>;
   }
 
-  // Función para reprogramar
-  const handleReschedule = async () => {
+  // Función para cargar slots disponibles al seleccionar fecha
+  const loadAvailableSlots = async (date) => {
+    if (!date || !selectedAppointment) return;
+    
+    setLoadingSlots(true);
     try {
-      await axios.patch(
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL}/appointments/${selectedAppointment.id}/available-slots`,
+        { 
+          params: { date },
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      setAvailableSlots(res.data.available_slots || []);
+    } catch (error) {
+      console.error('Error loading slots:', error);
+      setAvailableSlots([]);
+    } finally {
+      setLoadingSlots(false);
+    }
+  };
+
+  // Función para reprogramar (mejorada)
+  const handleReschedule = async () => {
+    if (!rescheduleData.new_date || !rescheduleData.new_time) {
+      setError('Por favor selecciona una nueva fecha y hora');
+      return;
+    }
+    
+    try {
+      const response = await axios.patch(
         `${import.meta.env.VITE_API_URL}/appointments/${selectedAppointment.id}/reschedule`,
-        rescheduleData,
+        {
+          new_date: rescheduleData.new_date,
+          new_time: rescheduleData.new_time,
+          duration: rescheduleData.duration
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
-      setSuccess('Cita reprogramada correctamente');
-      setTimeout(() => setSuccess(''), 3000);
+      setSuccess('Cita reprogramada correctamente. El cliente recibirá un email de confirmación.');
+      setTimeout(() => setSuccess(''), 4000);
       fetchAppointments();
       setShowRescheduleModal(false);
       setShowModal(false);
+      // Limpiar datos
+      setRescheduleData({ new_date: '', new_time: '', duration: 60 });
+      setAvailableSlots([]);
+      setSelectedSlot('');
     } catch (error) {
       console.error('Error rescheduling:', error);
       setError(error.response?.data?.error || 'Error al reprogramar');
@@ -121,6 +158,47 @@ function AdminAppointments() {
     }
   };
 
+  // Al abrir el modal de reprogramación, establecer fecha actual como default
+  const openRescheduleModal = () => {
+
+    if (!selectedAppointment) {
+      console.error("No hay cita seleccionada");
+      return;
+    }
+    const currentDate = new Date(selectedAppointment.start_time);
+
+    console.log ("Fecha a revisar",currentDate)
+
+    const formattedDate = currentDate.toISOString().split('T')[0];
+    const formattedTime = currentDate.toLocaleTimeString('es-CA', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    console.log (formattedDate, "fecha formateada a revisar",formattedTime)  
+    
+    setRescheduleData({
+      new_date: formattedDate,
+      new_time: formattedTime,
+      duration: 60
+    });
+    setShowRescheduleModal(true);
+    // Cargar slots para la fecha actual
+    loadAvailableSlots(formattedDate);
+  };
+
+  // Al cambiar la fecha en el modal
+  const handleDateChange = (date) => {
+    setRescheduleData({...rescheduleData, new_date: date, new_time: ''});
+    setSelectedSlot('');
+    loadAvailableSlots(date);
+  };
+
+  // Al seleccionar un slot
+  const handleSlotSelect = (slot) => {
+    setSelectedSlot(slot);
+    setRescheduleData({...rescheduleData, new_time: slot});
+  };
 
   return (
     <div style={styles.container}>
@@ -249,9 +327,7 @@ function AdminAppointments() {
                   )}
                   {selectedAppointment.status !== 'rescheduled' && (
                     <button
-                      onClick={() => {
-                        setShowRescheduleModal(true);
-                      }}
+                      onClick={openRescheduleModal}  // ← Usar la función que carga los datos
                       style={styles.completeBtn}
                     >
                       ✓ Cambiar horario o tiempo de la cita
@@ -307,19 +383,38 @@ function AdminAppointments() {
                 <input
                   type="date"
                   value={rescheduleData.new_date}
-                  onChange={(e) => setRescheduleData({...rescheduleData, new_date: e.target.value})}
+                  onChange={(e) => handleDateChange(e.target.value)}
                   style={styles.input}
+                  min={new Date().toISOString().split('T')[0]}
                 />
               </div>
-              <div style={styles.formGroup}>
-                <label>Nueva Hora</label>
-                <input
-                  type="time"
-                  value={rescheduleData.new_time}
-                  onChange={(e) => setRescheduleData({...rescheduleData, new_time: e.target.value})}
-                  style={styles.input}
-                />
-              </div>
+              
+              {rescheduleData.new_date && (
+                <div style={styles.formGroup}>
+                  <label>Nueva Hora</label>
+                  {loadingSlots ? (
+                    <div style={styles.loadingSlots}>Cargando horarios disponibles...</div>
+                  ) : availableSlots.length === 0 ? (
+                    <div style={styles.noSlots}>No hay horarios disponibles para esta fecha</div>
+                  ) : (
+                    <div style={styles.slotsGrid}>
+                      {availableSlots.map(slot => (
+                        <button
+                          key={slot}
+                          onClick={() => handleSlotSelect(slot)}
+                          style={{
+                            ...styles.slotBtn,
+                            ...(selectedSlot === slot ? styles.slotBtnSelected : {})
+                          }}
+                        >
+                          {slot}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              
               <div style={styles.formGroup}>
                 <label>Duración (minutos)</label>
                 <input
@@ -331,11 +426,19 @@ function AdminAppointments() {
                   step="15"
                 />
               </div>
+              
               <div style={styles.modalButtons}>
                 <button onClick={() => setShowRescheduleModal(false)} style={styles.cancelBtn}>
                   Cancelar
                 </button>
-                <button onClick={handleReschedule} style={styles.confirmBtn}>
+                <button 
+                  onClick={handleReschedule} 
+                  disabled={!rescheduleData.new_date || !rescheduleData.new_time}
+                  style={{
+                    ...styles.confirmBtn,
+                    ...(!rescheduleData.new_date || !rescheduleData.new_time ? styles.disabledBtn : {})
+                  }}
+                >
                   Reprogramar
                 </button>
               </div>
@@ -592,6 +695,53 @@ const styles = {
     borderRadius: '6px',
     cursor: 'pointer',
     marginTop: '8px'
+  },
+  slotsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '8px',
+    marginTop: '8px'
+  },
+  slotBtn: {
+    padding: '8px',
+    backgroundColor: '#f3f4f6',
+    border: '1px solid #e5e7eb',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    textAlign: 'center',
+    transition: 'all 0.2s'
+  },
+  slotBtnSelected: {
+    backgroundColor: '#3B82F6',
+    color: 'white',
+    borderColor: '#3B82F6'
+  },
+  loadingSlots: {
+    padding: '16px',
+    textAlign: 'center',
+    color: '#6b7280'
+  },
+  noSlots: {
+    padding: '16px',
+    textAlign: 'center',
+    color: '#ef4444',
+    backgroundColor: '#fee2e2',
+    borderRadius: '6px'
+  },
+  formGroup: {
+    marginBottom: '16px'
+  },
+  input: {
+    width: '100%',
+    padding: '10px',
+    border: '1px solid #d1d5db',
+    borderRadius: '6px',
+    fontSize: '14px'
+  },
+  disabledBtn: {
+    opacity: 0.5,
+    cursor: 'not-allowed'
   }
 };
 

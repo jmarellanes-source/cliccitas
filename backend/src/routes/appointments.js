@@ -5,6 +5,7 @@ const router = express.Router();
 const supabaseService = require('../services/supabase');
 const { authenticateUser } = require('../middleware/auth');
 const { sendAppointmentConfirmed } = require('../services/emailService');
+const { generateTimeSlots } = require('./calendar');
 const crypto = require('crypto');
 
 // ============================================
@@ -302,7 +303,7 @@ router.get('/business/:slug', async (req, res) => {
     
     if (aptError) throw aptError;
 
-    // ✅ Versión simplificada - solo formateo básico
+    // Versión simplificada - solo formateo básico
     const appointmentsWithLocalTime = appointments.map(apt => {
       const startUTC = new Date(apt.start_time);
       const endUTC = new Date(apt.end_time);
@@ -390,11 +391,32 @@ router.patch('/:appointmentId', async (req, res) => {
     
     if (updateError) throw updateError;
 
+    // Obtener el nombre del empleado (calendar.user_name)
+    let employeeName = 'el profesional';
+    try {
+      const { data: calendar, error: calendarError } = await supabaseService.admin
+        .from('calendars')
+        .select('user_name')
+        .eq('id', appointment.calendar_id)
+        .single();
+      
+      if (!calendarError && calendar) {
+        employeeName = calendar.user_name;
+        console.log(`Empleado encontrado: ${employeeName}`);
+      } else {
+        console.warn('No se encontró el empleado, usando nombre por defecto');
+      }
+    } catch (calError) {
+      console.warn('Error obteniendo empleado:', calError.message);
+    }
+    
+
+    console.log ("Verificando estados para enviar correo de confirmación")
     if (wasPending && isNowConfirmed) {
       try {
         // Usar la fecha local para el email
         const startDateTime = new Date(updated.start_time);
-        
+        console.log ("Enviando correo de confirmación..")
         await sendAppointmentConfirmed(
           {
             ...updated,
@@ -405,12 +427,22 @@ router.patch('/:appointmentId', async (req, res) => {
           },
           startDateTime,
           store.name,
-          calendar?.user_name || 'el profesional'
+          employeeName 
         );
         console.log(`Email de confirmación enviado a ${updated.customer_email}`);   
       } catch (emailError) {
         console.error('Error enviando email de confirmación:', emailError);
       } 
+    }
+
+    if (isNowRescheduled) {
+      try {
+        // También enviar email de reprogramación si lo deseas
+        // await sendAppointmentRescheduled(...)
+        console.log(`📧 Cita reprogramada para ${updated.customer_email}`);
+      } catch (emailError) {
+        console.error('Error enviando email de reprogramación:', emailError);
+      }
     }
 
     res.json({
@@ -460,9 +492,9 @@ router.patch('/:appointmentId/reschedule', async (req, res) => {
     const { data: updated, error: updateError } = await supabaseService.admin
       .from('appointments')
       .update({
-        start_time: startDateTimeUTC.toISOString(),
-        end_time: endDateTimeUTC.toISOString(),
-        status: 'rescheduled',
+        start_time: startDateTimeLocal.toISOString(), //we need to send date & time in local time not UTC,
+        end_time: endDateTimeLocal.toISOString(), //automatically postgresql will save in UTC 
+        //status: 'rescheduled', //let's not move status , if it was confirmed or pending we want to keep it that way 
         updated_at: new Date().toISOString()
       })
       .eq('id', appointmentId)
@@ -480,6 +512,96 @@ router.patch('/:appointmentId/reschedule', async (req, res) => {
     console.error('Error rescheduling appointment:', error);
     res.status(500).json({ error: error.message });
   }
+
+  // Obtener slots disponibles para reprogramar
+  router.get('/:appointmentId/available-slots', authenticateUser, async (req, res) => {
+    const { appointmentId } = req.params;
+    const { date } = req.query;
+    
+    try {
+      if (!date) {
+        return res.status(400).json({ error: 'Date is required' });
+      }
+      
+      // Obtener la cita para conocer calendar_id
+      const { data: appointment, error: aptError } = await supabaseService.admin
+        .from('appointments')
+        .select('calendar_id')
+        .eq('id', appointmentId)
+        .single();
+      
+      if (aptError || !appointment) {
+        return res.status(404).json({ error: 'Appointment not found' });
+      }
+      
+      // Reutilizar la lógica de disponibilidad de calendar.js
+      // Construir URL para el endpoint de available-slots
+      //const calendarSlotsUrl = `${req.protocol}://${req.get('host')}/api/calendar/${appointment.calendar_id}/available-slots?date=${date}&service_duration=60`;
+      
+      // Hacer la petición internamente o reutilizar la función
+      // Por ahora, llamamos directamente al servicio
+      
+      const workingHours = await supabaseService.getWorkingHoursByCalendar(appointment.calendar_id);
+      const targetDate = new Date(date);
+      const dayOfWeek = targetDate.getDay();
+      const daySchedule = workingHours.find(h => h.day_of_week === dayOfWeek);
+      
+      if (!daySchedule || !daySchedule.is_working_day) {
+        return res.json({ available_slots: [], message: 'Cerrado este día' });
+      }
+      
+      // Verificar excepciones
+      const exceptions = await supabaseService.getExceptionsByCalendar(
+        appointment.calendar_id, 
+        date,
+        date
+      );
+      
+      let startTime = daySchedule.start_time;
+      let endTime = daySchedule.end_time;
+      
+      if (exceptions && exceptions.length > 0) {
+        const exception = exceptions[0];
+        if (!exception.is_available) {
+          return res.json({ available_slots: [], message: 'Cerrado por excepción' });
+        }
+        if (exception.start_time && exception.end_time) {
+          startTime = exception.start_time;
+          endTime = exception.end_time;
+        }
+      }
+      
+      // Obtener citas existentes (excluyendo la actual)
+      const startOfDay = new Date(targetDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(targetDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      const existingAppointments = await supabaseService.getAppointmentsByCalendar(
+        appointment.calendar_id,
+        startOfDay.toISOString(),
+        endOfDay.toISOString()
+      );
+      
+      // Filtrar la cita actual para no contar como ocupada
+      const filteredAppointments = existingAppointments.filter(apt => apt.id !== appointmentId);
+      
+      // Generar slots
+      const duration = 60;
+      const slots = generateTimeSlots(startTime, endTime, duration, filteredAppointments);
+      
+      res.json({
+        date: date,
+        available_slots: slots,
+        working_hours: { start: startTime, end: endTime }
+      });
+    } catch (error) {
+      console.error('Error fetching available slots for reschedule:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+
 });
 
 module.exports = router;

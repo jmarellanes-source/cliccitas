@@ -153,158 +153,198 @@ router.get('/:calendarId/available-slots', async (req, res) => {
 
 // Crear cita (versión mejorada)
 router.post('/appointments', async (req, res) => {
-  const { 
-    calendar_id, 
-    employee_id,
-    customer_name, 
-    customer_email, 
-    customer_phone, 
-    appointment_date,
-    appointment_time,
-    duration,
-    notes,
-    service_id 
-  } = req.body;
-  
   try {
-    // Validar campos requeridos
-    if (!calendar_id || !customer_name || !customer_email || !appointment_date || !appointment_time) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    const { 
+      calendar_id, 
+      employee_id, // No usado - considerar eliminar
+      customer_name, 
+      customer_email, 
+      customer_phone, 
+      appointment_date, // Formato: 'YYYY-MM-DD' (local)
+      appointment_time, // Formato: 'HH:MM' (local, 24h)
+      duration,
+      notes,
+      service_id 
+    } = req.body;
+
+    // Validación centralizada y más clara
+    const requiredFields = { calendar_id, customer_name, customer_email, appointment_date, appointment_time };
+    const missingFields = Object.entries(requiredFields)
+      .filter(([_, value]) => !value)
+      .map(([key]) => key);
+
+    if (missingFields.length > 0) {
+      return res.status(400).json({ 
+        error: `Missing required fields: ${missingFields.join(', ')}` 
+      });
     }
-    
-    // 1. Obtener el calendario (incluyendo employee_name)
-    const { data: calendar, error: calendarError } = await supabaseService.admin
-      .from('calendars')
-      .select('store_id, appointment_duration, user_name')  // ✅ Agregar user_name
-      .eq('id', calendar_id)
-      .single();
-    
-    if (calendarError || !calendar) {
+
+    // Obtener todos los datos en una sola operación
+    const [calendar, workingHours] = await Promise.all([
+      supabaseService.admin
+        .from('calendars')
+        .select('store_id, appointment_duration, user_name')
+        .eq('id', calendar_id)
+        .single(),
+      supabaseService.getWorkingHoursByCalendar(calendar_id)
+    ]);
+
+    // Validaciones tempranas
+    if (!calendar.data) {
       return res.status(404).json({ error: 'Calendar not found' });
     }
-    
-    // 2. Obtener la tienda (para el nombre en el email)
-    const store = await supabaseService.getStoreById(calendar.store_id);
+
+    console.log ("calendario:",calendar.data)
+    const store = await supabaseService.getStoreById(calendar.data.store_id);
     if (!store) {
       return res.status(404).json({ error: 'Store not found' });
     }
-    
-    // Calcular hora de inicio y fin
-    const startDateTime = createLocalDateTime(appointment_date, appointment_time); //Local Time
-    const appointmentDuration = duration || calendar.appointment_duration || 30;
-    const endDateTime = new Date(startDateTime.getTime() + appointmentDuration * 60000);
-    
-    // Verificar que el horario está disponible
-    const dayOfWeek = startDateTime.getDay();
-    const workingHours = await supabaseService.getWorkingHoursByCalendar(calendar_id);
+
+    // Crear fecha local y UTC de forma limpia
+    const startLocal = new Date(`${appointment_date}T${appointment_time}:00`);
+    if (isNaN(startLocal.getTime())) {
+      return res.status(400).json({ error: 'Invalid date or time format' });
+    }
+
+    // Validar día laboral
+    const dayOfWeek = startLocal.getDay();
     const daySchedule = workingHours.find(h => h.day_of_week === dayOfWeek);
     
-    if (!daySchedule || !daySchedule.is_working_day) {
+    if (!daySchedule?.is_working_day) {
       return res.status(400).json({ error: 'Store is closed on this day' });
     }
-    
-    // Verificar conflictos usando UTC (para consultar BD)
-    const { startUTC, endUTC } = getUTCRangeForLocalDate(appointment_date);
-    
+
+    // Validar horario dentro del rango laboral
+    const timeStr = appointment_time.padStart(5, '0');
+    if (timeStr < daySchedule.start_time || timeStr > daySchedule.end_time) {
+      return res.status(400).json({ 
+        error: `Working hours are ${daySchedule.start_time} - ${daySchedule.end_time}` 
+      });
+    }
+
+    // Calcular duración y fechas
+    const appointmentDuration = duration || calendar.data.appointment_duration || 30;
+    const endLocal = new Date(startLocal.getTime() + appointmentDuration * 60000);
+
+    // Crear fechas UTC correctamente
+    const startUTC = new Date(Date.UTC(
+      startLocal.getFullYear(),
+      startLocal.getMonth(),
+      startLocal.getDate(),
+      startLocal.getHours(),
+      startLocal.getMinutes(),
+      0
+    ));
+    const endUTC = new Date(Date.UTC(
+      endLocal.getFullYear(),
+      endLocal.getMonth(),
+      endLocal.getDate(),
+      endLocal.getHours(),
+      endLocal.getMinutes(),
+      0
+    ));
+
+    // Verificar conflictos de forma más eficiente
     const existingAppointments = await supabaseService.getAppointmentsByCalendar(
       calendar_id,
       startUTC.toISOString(),
       endUTC.toISOString()
     );
-    
-    // Verificar si el slot específico está ocupado (comparar hora local)
-    const targetTimeKey = `${startDateTime.getHours().toString().padStart(2, '0')}:${startDateTime.getMinutes().toString().padStart(2, '0')}`;
+
+    // Verificar conflicto usando timestamp en minutos (más preciso y eficiente)
+    const startMinutes = startLocal.getHours() * 60 + startLocal.getMinutes();
+    const endMinutes = endLocal.getHours() * 60 + endLocal.getMinutes();
+
     const isBooked = existingAppointments.some(apt => {
-      const aptUTC = new Date(apt.start_time);
-      const aptHour = aptUTC.getUTCHours();
-      const aptMinute = aptUTC.getUTCMinutes();
-      const aptTimeKey = `${aptHour.toString().padStart(2, '0')}:${aptMinute.toString().padStart(2, '0')}`;
-      return aptTimeKey === targetTimeKey;
+      const aptStart = new Date(apt.start_time);
+      const aptEnd = new Date(apt.end_time);
+      const aptStartMinutes = aptStart.getUTCHours() * 60 + aptStart.getUTCMinutes();
+      const aptEndMinutes = aptEnd.getUTCHours() * 60 + aptEnd.getUTCMinutes();
+      
+      // Detectar superposición real
+      return (startMinutes < aptEndMinutes && endMinutes > aptStartMinutes);
     });
-    
 
     if (isBooked) {
       return res.status(409).json({ error: 'Time slot is already booked' });
     }
 
-    const startDateTimeUTC = new Date(Date.UTC(
-      startDateTime.getFullYear(),
-      startDateTime.getMonth(),
-      startDateTime.getDate(),
-      startDateTime.getHours(),
-      startDateTime.getMinutes(),
-      0
-    ));
-    const endDateTimeUTC = new Date(startDateTimeUTC.getTime() + appointmentDuration * 60000);
-    
-    console.log("Guardando en BD - UTC:", startDateTimeUTC);    
-
-    // Crear la cita
+    // Crear la cita con todas las validaciones previas
     const appointment = await supabaseService.createAppointment({
-      store_id: calendar.store_id,
-      calendar_id: calendar_id,
-      customer_name,
-      customer_email,
+      store_id: calendar.data.store_id,
+      calendar_id,
+      customer_name: customer_name.trim(),
+      customer_email: customer_email.trim().toLowerCase(),
       customer_phone: customer_phone || null,
-      start_time: startDateTimeUTC.toISOString(),
-      end_time: endDateTimeUTC.toISOString(),
+      start_time: startLocal.toISOString(),
+      end_time: endLocal.toISOString(),
       status: 'pending',
-      notes: notes || null,
+      notes: notes?.trim() || null,
       service_id: service_id || null
     });
-    
-    // 7. GENERAR TOKEN PARA EL CLIENTE
-    const token = generateToken();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30); // Token válido por 30 días
-    
-    // Guardar token en la tabla appointment_tokens
-    const { error: tokenError } = await supabaseService.admin
-      .from('appointment_tokens')
-      .insert({
-        appointment_id: appointment.id,
-        token: token,
-        email: customer_email,
-        expires_at: expiresAt.toISOString(),
-        is_used: false
-      });
-    
-    if (tokenError) {
-      console.error('Error saving token:', tokenError);
-      // No fallamos la creación de la cita, solo logueamos el error
+
+    // Generar token (con manejo de errores)
+    let token = null;
+    let expiresAt = null;
+    try {
+      token = generateToken();
+      expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+
+      const { error: tokenError } = await supabaseService.admin
+        .from('appointment_tokens')
+        .insert({
+          appointment_id: appointment.id,
+          token,
+          email: customer_email.trim().toLowerCase(),
+          expires_at: expiresAt.toISOString(),
+          is_used: false
+        });
+
+      if (tokenError) {
+        console.error('Error saving token:', tokenError);
+        token = null; // No fallar la cita por error de token
+      }
+    } catch (tokenError) {
+      console.error('Error in token generation:', tokenError);
     }
-    
-    // 8. ✅ ENVIAR EMAIL DE CONFIRMACIÓN
+
+    // Enviar email (con manejo de errores)
     try {
       await sendAppointmentConfirmation(
-        appointment,                 // Datos de la cita
-        startDateTime,               // Hora local de la cita
-        token,                       // Token para gestionar
-        expiresAt,                   // Fecha de expiración
-        store.name,                  // ✅ Nombre de la tienda (ahora definido)
-        calendar.user_name || 'el profesional'  // ✅ Nombre del empleado
+        appointment,
+        startLocal, // Fecha local para mostrar en el email
+        token,
+        expiresAt,
+        store.name,
+        calendar.data.user_name || 'el profesional'
       );
-      console.log(`Email enviado a ${customer_email}`);
+      console.log(`Email sent to ${customer_email}`);
     } catch (emailError) {
       console.error('Error sending email:', emailError);
       // No fallamos la creación de la cita si el email falla
     }
 
+    // Respuesta consistente con fechas en formato local para el frontend
     res.status(201).json({
       success: true,
       appointment: {
         id: appointment.id,
         customer_name: appointment.customer_name,
         customer_email: appointment.customer_email,
-        start_time: appointment.start_time,
-        end_time: appointment.end_time,
+        start_time: startLocal.toISOString(), // Mantenemos ISO pero el frontend lo interpreta como local
+        end_time: endLocal.toISOString(),
         status: appointment.status
       },
-      message: 'Cita agendada exitosamente. Recibirás un correo de confirmación.'
+      message: 'Cita recibida. Recibirás un correo con los detalles.'
     });
+
   } catch (error) {
     console.error('Error creating appointment:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: 'Error al crear la cita', 
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined 
+    });
   }
 });
 
