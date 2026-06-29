@@ -345,6 +345,104 @@ router.get('/business/:slug', async (req, res) => {
   }
 });
 
+// Obtener slots disponibles para reprogramar
+router.get('/:appointmentId/available-slots', authenticateUser, async (req, res) => {
+  const { appointmentId } = req.params;
+  const { date } = req.query;
+  
+  try {
+    if (!date) {
+      return res.status(400).json({ error: 'Date is required' });
+    }
+    
+    // Obtener la cita para conocer calendar_id
+    const { data: appointment, error: aptError } = await supabaseService.admin
+      .from('appointments')
+      .select('calendar_id')
+      .eq('id', appointmentId)
+      .single();
+    
+    if (aptError || !appointment) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+    
+    // Reutilizar la lógica de disponibilidad de calendar.js
+    // Construir URL para el endpoint de available-slots
+    //const calendarSlotsUrl = `${req.protocol}://${req.get('host')}/api/calendar/${appointment.calendar_id}/available-slots?date=${date}&service_duration=60`;
+    
+    // Hacer la petición internamente o reutilizar la función
+    // Por ahora, llamamos directamente al servicio
+    
+    const workingHours = await supabaseService.getWorkingHoursByCalendar(appointment.calendar_id);
+
+    const [year, month, day] = date.split('-').map(Number);
+    const targetDate = new Date(year, month - 1, day, 0, 0, 0); //local time
+    //const targetDate = new Date(date); // This was tranforming to UTC
+    
+    const startOfDayUTC = new Date(year, month - 1, day, 0, 0, 0);
+    const endOfDayUTC = new Date(year, month - 1, day, 23, 59, 59, 999);
+
+    const dayOfWeek = targetDate.getDay();
+    const daySchedule = workingHours.find(h => h.day_of_week === dayOfWeek);
+    
+    if (!daySchedule || !daySchedule.is_working_day) {
+      return res.json({ available_slots: [], message: 'Cerrado este día' });
+    }
+    
+    // Verificar excepciones
+    const exceptions = await supabaseService.getExceptionsByCalendar(
+      appointment.calendar_id, 
+      date,
+      date
+    );
+    
+    let startTime = daySchedule.start_time;
+    let endTime = daySchedule.end_time;
+    
+    if (exceptions && exceptions.length > 0) {
+      const exception = exceptions[0];
+      if (!exception.is_available) {
+        return res.json({ available_slots: [], message: 'Cerrado por excepción' });
+      }
+      if (exception.start_time && exception.end_time) {
+        startTime = exception.start_time;
+        endTime = exception.end_time;
+      }
+    }
+    console.log ("Target Date",targetDate)
+    // Obtener citas existentes (excluyendo la actual)
+    //const startOfDay = new Date(targetDate);
+    //startOfDay.setHours(0, 0, 0, 0);
+    //const endOfDay = new Date(targetDate);
+    //endOfDay.setHours(23, 59, 59, 999);
+
+    
+    console.log (startOfDayUTC.toISOString(),"rango ISO",endOfDayUTC.toISOString())
+    const existingAppointments = await supabaseService.getAppointmentsByCalendar(
+      appointment.calendar_id,
+      startOfDayUTC.toISOString(),
+      endOfDayUTC.toISOString()
+    );
+    
+    console.log ("Tamaño appts", existingAppointments.length,appointmentId)
+    // Filtrar la cita actual para no contar como ocupada
+    const filteredAppointments = existingAppointments.filter(apt => apt.id !== appointmentId);
+    console.log ("A punto de generar slots", filteredAppointments.length)
+    // Generar slots
+    const duration = 60;
+    const slots = generateTimeSlots(startTime, endTime, duration, filteredAppointments);
+    
+    res.json({
+      date: date,
+      available_slots: slots,
+      working_hours: { start: startTime, end: endTime }
+    });
+  } catch (error) {
+    console.error('Error fetching available slots for reschedule:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Actualizar cita (empleado/owner)
 router.patch('/:appointmentId', async (req, res) => {
   const { appointmentId } = req.params;
@@ -354,14 +452,14 @@ router.patch('/:appointmentId', async (req, res) => {
     // Verificar que la cita existe y pertenece a un negocio del usuario
     const { data: appointment, error: aptError } = await supabaseService.admin
       .from('appointments')
-      .select('store_id, status')
+      .select('store_id, status, calendar_id')
       .eq('id', appointmentId)
       .single();
     
     if (aptError || !appointment) {
       return res.status(404).json({ error: 'Cita no encontrada' });
     }
-    
+
     const store = await supabaseService.getStoreById(appointment.store_id);
     const userBusinesses = await supabaseService.getUserBusinesses(req.user.id);
     const hasAccess = userBusinesses.some(ub => ub.pbx_group_id === store.pbx_group_id);
@@ -372,7 +470,11 @@ router.patch('/:appointmentId', async (req, res) => {
     
     // Si el nuevo estado es 'confirmed' y antes era 'pending'
     const wasPending = appointment.status === 'pending';
+    const wasConfirmed = appointment.status === 'confirmed';
     const isNowConfirmed = status === 'confirmed';
+    const isNowCancelled = status === 'cancelled';
+    const isNowRescheduled = status === 'rescheduled';
+
 
     const updateData = {};
     if (status) updateData.status = status;
@@ -392,6 +494,7 @@ router.patch('/:appointmentId', async (req, res) => {
     if (updateError) throw updateError;
 
     // Obtener el nombre del empleado (calendar.user_name)
+    console.log ("valor de calendar id", appointment.calendar_id)
     let employeeName = 'el profesional';
     try {
       const { data: calendar, error: calendarError } = await supabaseService.admin
@@ -456,6 +559,7 @@ router.patch('/:appointmentId', async (req, res) => {
   }
 });
 
+
 // Reprogramar cita (empleado/owner)
 router.patch('/:appointmentId/reschedule', async (req, res) => {
   const { appointmentId } = req.params;
@@ -512,96 +616,6 @@ router.patch('/:appointmentId/reschedule', async (req, res) => {
     console.error('Error rescheduling appointment:', error);
     res.status(500).json({ error: error.message });
   }
-
-  // Obtener slots disponibles para reprogramar
-  router.get('/:appointmentId/available-slots', authenticateUser, async (req, res) => {
-    const { appointmentId } = req.params;
-    const { date } = req.query;
-    
-    try {
-      if (!date) {
-        return res.status(400).json({ error: 'Date is required' });
-      }
-      
-      // Obtener la cita para conocer calendar_id
-      const { data: appointment, error: aptError } = await supabaseService.admin
-        .from('appointments')
-        .select('calendar_id')
-        .eq('id', appointmentId)
-        .single();
-      
-      if (aptError || !appointment) {
-        return res.status(404).json({ error: 'Appointment not found' });
-      }
-      
-      // Reutilizar la lógica de disponibilidad de calendar.js
-      // Construir URL para el endpoint de available-slots
-      //const calendarSlotsUrl = `${req.protocol}://${req.get('host')}/api/calendar/${appointment.calendar_id}/available-slots?date=${date}&service_duration=60`;
-      
-      // Hacer la petición internamente o reutilizar la función
-      // Por ahora, llamamos directamente al servicio
-      
-      const workingHours = await supabaseService.getWorkingHoursByCalendar(appointment.calendar_id);
-      const targetDate = new Date(date);
-      const dayOfWeek = targetDate.getDay();
-      const daySchedule = workingHours.find(h => h.day_of_week === dayOfWeek);
-      
-      if (!daySchedule || !daySchedule.is_working_day) {
-        return res.json({ available_slots: [], message: 'Cerrado este día' });
-      }
-      
-      // Verificar excepciones
-      const exceptions = await supabaseService.getExceptionsByCalendar(
-        appointment.calendar_id, 
-        date,
-        date
-      );
-      
-      let startTime = daySchedule.start_time;
-      let endTime = daySchedule.end_time;
-      
-      if (exceptions && exceptions.length > 0) {
-        const exception = exceptions[0];
-        if (!exception.is_available) {
-          return res.json({ available_slots: [], message: 'Cerrado por excepción' });
-        }
-        if (exception.start_time && exception.end_time) {
-          startTime = exception.start_time;
-          endTime = exception.end_time;
-        }
-      }
-      
-      // Obtener citas existentes (excluyendo la actual)
-      const startOfDay = new Date(targetDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(targetDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      
-      const existingAppointments = await supabaseService.getAppointmentsByCalendar(
-        appointment.calendar_id,
-        startOfDay.toISOString(),
-        endOfDay.toISOString()
-      );
-      
-      // Filtrar la cita actual para no contar como ocupada
-      const filteredAppointments = existingAppointments.filter(apt => apt.id !== appointmentId);
-      
-      // Generar slots
-      const duration = 60;
-      const slots = generateTimeSlots(startTime, endTime, duration, filteredAppointments);
-      
-      res.json({
-        date: date,
-        available_slots: slots,
-        working_hours: { start: startTime, end: endTime }
-      });
-    } catch (error) {
-      console.error('Error fetching available slots for reschedule:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-
 });
 
 module.exports = router;

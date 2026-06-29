@@ -82,6 +82,7 @@ router.get('/:calendarId/available-slots', async (req, res) => {
   const { calendarId } = req.params;
   const { date, service_duration } = req.query;
   
+
   try {
     if (!date) {
       return res.status(400).json({ error: 'Date is required' });
@@ -93,7 +94,10 @@ router.get('/:calendarId/available-slots', async (req, res) => {
 
     const [year, month, day] = date.split('-').map(Number);
     // Para el día de semana (usar fecha local)
-    const targetDate = new Date(year, month - 1, day);
+
+    const targetDate = new Date(year, month - 1, day, 0, 0, 0); //local time
+    //const targetDate = new Date(year, month - 1, day); // This was tranforming to UTC
+
     const dayOfWeek = targetDate.getDay();
 
     // 1. Obtener horarios de trabajo para ese día
@@ -107,8 +111,10 @@ router.get('/:calendarId/available-slots', async (req, res) => {
     // 2. Verificar excepciones para esta fecha
     const exceptions = await supabaseService.getExceptionsByCalendar(
       calendarId, 
-      targetDate.toISOString().split('T')[0],
-      targetDate.toISOString().split('T')[0]
+      //targetDate.toISOString().split('T')[0],
+      //targetDate.toISOString().split('T')[0]
+      date,
+      date
     );
     
     let startTime = daySchedule.start_time;
@@ -127,9 +133,11 @@ router.get('/:calendarId/available-slots', async (req, res) => {
       }
     }
     
-    const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-    const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
-    
+    //const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0)); // Double UTC
+    //const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999)); // Double UTC
+    const startOfDay = new Date(year, month - 1, day, 0, 0, 0);
+    const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+ 
     const appointments = await supabaseService.getAppointmentsByCalendar(
       calendarId,
       startOfDay.toISOString(),
@@ -141,7 +149,8 @@ router.get('/:calendarId/available-slots', async (req, res) => {
     const slots = generateTimeSlots(startTime, endTime, duration, appointments);
     
     res.json({
-      date: targetDate.toISOString().split('T')[0],
+      //date: targetDate.toISOString().split('T')[0],
+      date: date,
       available_slots: slots,
       working_hours: { start: startTime, end: endTime }
     });
@@ -213,10 +222,22 @@ router.post('/appointments', async (req, res) => {
     if (!daySchedule?.is_working_day) {
       return res.status(400).json({ error: 'Store is closed on this day' });
     }
+  
+    // Normalizar tiempo a formato HH:MM (sin segundos)
+    const normalizeTimeToHM = (timeStr) => {
+      // Si tiene formato "HH:MM:SS", extraer solo HH:MM
+      if (timeStr.length > 5) {
+        return timeStr.substring(0, 5);
+      }
+      return timeStr;
+    };
 
     // Validar horario dentro del rango laboral
-    const timeStr = appointment_time.padStart(5, '0');
-    if (timeStr < daySchedule.start_time || timeStr > daySchedule.end_time) {
+    const timeStr = normalizeTimeToHM(appointment_time);
+    const startStr = normalizeTimeToHM(daySchedule.start_time);
+    const endStr = normalizeTimeToHM(daySchedule.end_time);
+    console.log ("guardando cita",timeStr,startStr,endStr)
+    if (timeStr < startStr || timeStr > endStr) {
       return res.status(400).json({ 
         error: `Working hours are ${daySchedule.start_time} - ${daySchedule.end_time}` 
       });
@@ -500,16 +521,17 @@ function generateTimeSlots(startTime, endTime, duration, appointments) {
   const [endHour, endMinute] = endTime.split(':').map(Number);
   
   // ✅ CORREGIDO: Usar UTC para los cálculos (las citas están en UTC)
-  const start = new Date(Date.UTC(2000, 0, 1, startHour, startMinute, 0));
-  const end = new Date(Date.UTC(2000, 0, 1, endHour, endMinute, 0));
-
+  const start = new Date(2000, 0, 1, startHour, startMinute, 0);
+  const end = new Date(2000, 0, 1, endHour, endMinute, 0);
+  
+  console.log (start, "periodo en generar slots ", end, "tamaño ", appointments.length)
   // Crear conjunto de horarios ocupados (convertir hora UTC a hora local)
   const bookedSlots = new Set();
   appointments.forEach(apt => {
     const aptStart = new Date(apt.start_time);
     // La BD guarda en UTC, obtener hora UTC directamente
-    const hours = aptStart.getUTCHours().toString().padStart(2, '0');
-    const minutes = aptStart.getUTCMinutes().toString().padStart(2, '0');
+    const hours = aptStart.getHours().toString().padStart(2, '0');
+    const minutes = aptStart.getMinutes().toString().padStart(2, '0');
     const timeKey = `${hours}:${minutes}`;
     
     console.log(`Cita UTC: ${apt.start_time} -> Hora: ${timeKey}`);
@@ -518,13 +540,13 @@ function generateTimeSlots(startTime, endTime, duration, appointments) {
 
   let current = new Date(start);
   while (current < end) {
-    const hours = current.getUTCHours().toString().padStart(2, '0');
-    const minutes = current.getUTCMinutes().toString().padStart(2, '0');
+    const hours = current.getHours().toString().padStart(2, '0');
+    const minutes = current.getMinutes().toString().padStart(2, '0');
     const timeSlot = `${hours}:${minutes}`;
     if (!bookedSlots.has(timeSlot)) {
       slots.push(timeSlot);
     }
-    current.setUTCMinutes(current.getUTCMinutes() + duration);
+    current.setMinutes(current.getMinutes() + duration);
   }
   
   return slots;
@@ -533,3 +555,4 @@ function generateTimeSlots(startTime, endTime, duration, appointments) {
 // backend/src/routes/calendar.js - Agregar estos endpoints
 
 module.exports = router;
+module.exports.generateTimeSlots = generateTimeSlots;

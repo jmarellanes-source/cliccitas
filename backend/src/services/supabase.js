@@ -485,6 +485,7 @@ class SupabaseService {
     if (endDate) {
       query = query.lte('end_time', endDate);
     }
+    console.log (startDate,"Inicio y fin para slots", endDate)
     
     const { data, error } = await query.order('start_time');
     
