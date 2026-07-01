@@ -91,6 +91,34 @@ function BookAppointment() {
     }
   };
 
+  // Función para crear fecha local a partir de string YYYY-MM-DD
+  const createLocalDate = (dateStr) => {
+    if (!dateStr) return null;
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+
+  // Función para formatear fecha local
+  const formatLocalDateLong = (dateStr) => {
+    const date = createLocalDate(dateStr);
+    if (!date) return '';
+    return date.toLocaleDateString('es-MX', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long'
+    });
+  };
+
+  const formatLocalDateShort = (dateStr) => {
+    const date = createLocalDate(dateStr);
+    if (!date) return '';
+    return date.toLocaleDateString('es-MX', {
+      day: 'numeric',
+      month: 'short'
+    });
+  };
+
+
   // Generar calendario mensual
   useEffect(() => {
     generateCalendar(currentMonth);
@@ -562,7 +590,7 @@ function BookAppointment() {
               <button onClick={() => setCurrentStep(2)} style={styles.backStepBtn}>← Atrás</button>
               <div style={styles.selectedDetails}>
                 <span>👤 {selectedEmployee.name}</span>
-                <span>📅 {new Date(selectedDate).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+                <span>📅 {formatLocalDateLong(selectedDate)}</span>
               </div>
             </div>
             
@@ -607,7 +635,7 @@ function BookAppointment() {
               <button onClick={() => setCurrentStep(3)} style={styles.backStepBtn}>← Atrás</button>
               <div style={styles.selectedDetails}>
                 <span>👤 {selectedEmployee.name}</span>
-                <span>📅 {new Date(selectedDate).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}</span>
+                <span>📅 {formatLocalDateLong(selectedDate)}</span>
                 <span>🕐 {selectedSlot}</span>
               </div>
             </div>

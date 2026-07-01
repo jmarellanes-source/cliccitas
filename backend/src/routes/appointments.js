@@ -424,13 +424,21 @@ router.get('/:appointmentId/available-slots', authenticateUser, async (req, res)
       endOfDayUTC.toISOString()
     );
     
-    console.log ("Tamaño appts", existingAppointments.length,appointmentId)
+    // Filtrar citas canceladas (no ocupan espacio)
+    const activeAppointments = existingAppointments.filter(
+      apt => apt.status !== 'cancelled'
+    );
+
+    console.log ("Tamaño appts", activeAppointments.length,appointmentId)
     // Filtrar la cita actual para no contar como ocupada
-    const filteredAppointments = existingAppointments.filter(apt => apt.id !== appointmentId);
+    const filteredAppointments = activeAppointments.filter(apt => apt.id !== appointmentId);
     console.log ("A punto de generar slots", filteredAppointments.length)
     // Generar slots
     const duration = 60;
-    const slots = generateTimeSlots(startTime, endTime, duration, filteredAppointments);
+
+    //considerar la cita que se esta revisando, si queremos quitarla usar filteredAppointments
+    const slots = generateTimeSlots(startTime, endTime, duration, filteredAppointments); 
+
     
     res.json({
       date: date,

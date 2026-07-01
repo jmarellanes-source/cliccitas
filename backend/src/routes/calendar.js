@@ -143,11 +143,34 @@ router.get('/:calendarId/available-slots', async (req, res) => {
       startOfDay.toISOString(),
       endOfDay.toISOString()
     );
+
+    const activeAppointments = appointments.filter(
+      apt => apt.status !== 'cancelled'
+    );
     
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
     // 4. Generar slots disponibles
     const duration = parseInt(service_duration) || 30;
-    const slots = generateTimeSlots(startTime, endTime, duration, appointments);
+
+    // When we are requesting slots for "today" , first slot should be at least current hour
+    if (today.toISOString().split('T')[0] === targetDate.toISOString().split('T')[0]) {
+
+        const totalMinutosActuales = now.getHours() * 60 + now.getMinutes();  //+1 ayuda a tomar siguiente slot
+        const proximoSlotEnMinutos = Math.ceil(totalMinutosActuales / duration) * duration;
+
+        const proximaHora = Math.floor(proximoSlotEnMinutos / 60) % 24;
+        const proximosMinutos = proximoSlotEnMinutos % 60;
+
+        startTime = String(proximaHora).padStart(2, '0') + ':' + String(proximosMinutos).
+
+        console.log ("el starttime es",startTime) 
+    }
     
+    const slots = generateTimeSlots(startTime, endTime, duration, activeAppointments);
+
+
     res.json({
       //date: targetDate.toISOString().split('T')[0],
       date: date,
@@ -272,11 +295,16 @@ router.post('/appointments', async (req, res) => {
       endUTC.toISOString()
     );
 
+    // Filtrar citas canceladas (no ocupan espacio)
+    const activeAppointments = existingAppointments.filter(
+      apt => apt.status !== 'cancelled'
+    );
+
     // Verificar conflicto usando timestamp en minutos (más preciso y eficiente)
     const startMinutes = startLocal.getHours() * 60 + startLocal.getMinutes();
     const endMinutes = endLocal.getHours() * 60 + endLocal.getMinutes();
 
-    const isBooked = existingAppointments.some(apt => {
+    const isBooked = activeAppointments.some(apt => {
       const aptStart = new Date(apt.start_time);
       const aptEnd = new Date(apt.end_time);
       const aptStartMinutes = aptStart.getUTCHours() * 60 + aptStart.getUTCMinutes();
@@ -514,44 +542,73 @@ router.get('/by-user/:pbxUserId', authenticateUser, async (req, res) => {
 
 // Función auxiliar para generar slots de tiempo
 function generateTimeSlots(startTime, endTime, duration, appointments) {
-  const slots = [];
+  // Convertir a minutos
+  const toMinutes = (time) => {
+    if (typeof time === 'string') {
+      const [h, m] = time.split(':').map(Number);
+      return h * 60 + m;
+    }
+    return time.getHours() * 60 + time.getMinutes();
+  };
 
-  // Parsear horas locales (formato "HH:MM:SS")
-  const [startHour, startMinute] = startTime.split(':').map(Number);
-  const [endHour, endMinute] = endTime.split(':').map(Number);
+  const start = toMinutes(startTime);
+  const end = toMinutes(endTime);
   
-  // ✅ CORREGIDO: Usar UTC para los cálculos (las citas están en UTC)
-  const start = new Date(2000, 0, 1, startHour, startMinute, 0);
-  const end = new Date(2000, 0, 1, endHour, endMinute, 0);
-  
-  console.log (start, "periodo en generar slots ", end, "tamaño ", appointments.length)
-  // Crear conjunto de horarios ocupados (convertir hora UTC a hora local)
-  const bookedSlots = new Set();
+  // Crear mapa de citas por hora de inicio para búsqueda rápida
+  const appointmentsMap = new Map();
   appointments.forEach(apt => {
-    const aptStart = new Date(apt.start_time);
-    // La BD guarda en UTC, obtener hora UTC directamente
-    const hours = aptStart.getHours().toString().padStart(2, '0');
-    const minutes = aptStart.getMinutes().toString().padStart(2, '0');
-    const timeKey = `${hours}:${minutes}`;
-    
-    console.log(`Cita UTC: ${apt.start_time} -> Hora: ${timeKey}`);
-    bookedSlots.add(timeKey);
+    const aptStart = toMinutes(new Date(apt.start_time));
+    const aptEnd = toMinutes(new Date(apt.end_time));
+    appointmentsMap.set(aptStart, aptEnd);
   });
 
-  let current = new Date(start);
+  const slots = [];
+  let current = start;
+
   while (current < end) {
-    const hours = current.getHours().toString().padStart(2, '0');
-    const minutes = current.getMinutes().toString().padStart(2, '0');
-    const timeSlot = `${hours}:${minutes}`;
-    if (!bookedSlots.has(timeSlot)) {
-      slots.push(timeSlot);
+    // Verificar si hay una cita en este momento exacto
+    if (appointmentsMap.has(current)) {
+      // Saltar al final de la cita
+      current = appointmentsMap.get(current);
+      continue;
     }
-    current.setMinutes(current.getMinutes() + duration);
+
+    // Verificar si hay una cita que empieza antes de que termine este slot
+    const slotEnd = current + duration;
+    let hasAppointmentInSlot = false;
+    let nextAppointmentStart = null;
+
+    for (const [aptStart, aptEnd] of appointmentsMap) {
+      // Si la cita empieza dentro del slot (y no es exactamente al inicio)
+      if (aptStart > current && aptStart < slotEnd) {
+        hasAppointmentInSlot = true;
+        nextAppointmentStart = aptStart;
+        break;
+      }
+    }
+
+    if (hasAppointmentInSlot) {
+      // Si hay una cita en medio, el slot disponible es hasta que empieza la cita
+      if (nextAppointmentStart > current) {
+        slots.push(formatTime(current));
+      }
+      // Saltar al inicio de la cita
+      current = nextAppointmentStart;
+    } else {
+      // Slot completamente disponible
+      slots.push(formatTime(current));
+      current = slotEnd;
+    }
   }
-  
+
   return slots;
 }
 
+function formatTime(minutes) {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+}
 // backend/src/routes/calendar.js - Agregar estos endpoints
 
 module.exports = router;

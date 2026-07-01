@@ -13,7 +13,7 @@ function AdminAppointments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('pending');
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showModal, setShowModal] = useState(false);
   // Agregar estado para el modal de reprogramación
@@ -35,8 +35,13 @@ function AdminAppointments() {
   const fetchAppointments = async () => {
     setLoading(true);
     try {
-      const url = `${import.meta.env.VITE_API_URL}/appointments/business/${slug}?status=${filter}`;
-      console.log('📡 Fetching appointments:', url);
+      // Obtener la fecha actual en formato ISO (YYYY-MM-DD)
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      
+      // Agregar filtro de fecha al endpoint
+      const url = `${import.meta.env.VITE_API_URL}/appointments/business/${slug}?status=${filter}&start_date=${todayStr}`;
+      console.log('📡 Fetching appointments from today:', url);
       
       const res = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` }
@@ -166,13 +171,17 @@ function AdminAppointments() {
       return;
     }
     const currentDate = new Date(selectedAppointment.start_time);
+    const CurrentEnd = new Date(selectedAppointment.end_time);
+    const durationMinutes = Math.round((CurrentEnd - currentDate) / (1000 * 60)); // Diferencia en minutos
 
     console.log ("Fecha a revisar",currentDate)
 
     const formattedDate = currentDate.toISOString().split('T')[0];
     const formattedTime = currentDate.toLocaleTimeString('es-CA', {
-      hour: '2-digit',
-      minute: '2-digit'
+        timeZone: 'America/Mexico_City',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
     });
 
     console.log (formattedDate, "fecha formateada a revisar",formattedTime)  
@@ -180,7 +189,7 @@ function AdminAppointments() {
     setRescheduleData({
       new_date: formattedDate,
       new_time: formattedTime,
-      duration: 60
+      duration: durationMinutes  
     });
     setShowRescheduleModal(true);
     // Cargar slots para la fecha actual
@@ -216,12 +225,6 @@ function AdminAppointments() {
       {/* Filtros */}
       <div style={styles.filters}>
         <button
-          onClick={() => setFilter('all')}
-          style={{ ...styles.filterBtn, ...(filter === 'all' ? styles.filterActive : {}) }}
-        >
-          Todas
-        </button>
-        <button
           onClick={() => setFilter('pending')}
           style={{ ...styles.filterBtn, ...(filter === 'pending' ? styles.filterActive : {}) }}
         >
@@ -238,6 +241,18 @@ function AdminAppointments() {
           style={{ ...styles.filterBtn, ...(filter === 'completed' ? styles.filterActive : {}) }}
         >
           Completadas
+        </button>
+        <button
+          onClick={() => setFilter('cancelled')}
+          style={{ ...styles.filterBtn, ...(filter === 'cancelled' ? styles.filterActive : {}) }}
+        >
+          Canceladas
+        </button>
+        <button
+          onClick={() => setFilter('all')}
+          style={{ ...styles.filterBtn, ...(filter === 'all' ? styles.filterActive : {}) }}
+        >
+          Todas
         </button>
       </div>
 
@@ -306,8 +321,8 @@ function AdminAppointments() {
             <div style={styles.modalBody}>
               <p><strong>Cliente:</strong> {selectedAppointment.customer_name}</p>
               <p><strong>Email:</strong> {selectedAppointment.customer_email}</p>
-              <p><strong>Fecha:</strong> {formatDate(selectedAppointment.start_time)}</p>
-              <p><strong>Hora:</strong> {formatTime(selectedAppointment.start_time)}</p>
+              <p><strong>Fecha:</strong> {formatDate(selectedAppointment.start_time)}
+              <strong> Hora:</strong> {formatTime(selectedAppointment.start_time)}</p>
               <p><strong>Estado actual:</strong> {getStatusBadge(selectedAppointment.status)}</p>
               
               {selectedAppointment.notes && (
@@ -330,7 +345,7 @@ function AdminAppointments() {
                       onClick={openRescheduleModal}  // ← Usar la función que carga los datos
                       style={styles.completeBtn}
                     >
-                      ✓ Cambiar horario o tiempo de la cita
+                      ✓ Reagendar
                     </button>
                   )}
                   {selectedAppointment.status !== 'cancelled' && (
@@ -378,6 +393,18 @@ function AdminAppointments() {
               <button onClick={() => setShowRescheduleModal(false)} style={styles.closeBtn}>×</button>
             </div>
             <div style={styles.modalBody}>
+              {/* ✅ Mostrar la hora actual de la cita */}
+              <div style={styles.currentAppointmentInfo}>
+                <h2>📅 Cita actual</h2>
+                <p><strong>Fecha:</strong> {formatDate(selectedAppointment.start_time)}
+                <strong> Hora:</strong> {formatTime(selectedAppointment.start_time)}</p>
+                <p><strong>Duración actual:</strong> {rescheduleData.duration || 60} min</p>
+              </div>
+              
+              <hr style={styles.divider} />
+              
+              <h2>🔄 Cambiar a:</h2>
+              
               <div style={styles.formGroup}>
                 <label>Nueva Fecha</label>
                 <input
@@ -417,14 +444,19 @@ function AdminAppointments() {
               
               <div style={styles.formGroup}>
                 <label>Duración (minutos)</label>
-                <input
-                  type="number"
+                <select
                   value={rescheduleData.duration}
                   onChange={(e) => setRescheduleData({...rescheduleData, duration: parseInt(e.target.value)})}
                   style={styles.input}
-                  min="15"
-                  step="15"
-                />
+                >
+                  <option value="15">15 min</option>
+                  <option value="30">30 min</option>
+                  <option value="45">45 min</option>
+                  <option value="60">60 min (1 hora)</option>
+                  <option value="75">75 min (1:15)</option>
+                  <option value="90">90 min (1:30)</option>
+                  <option value="120">120 min (2 horas)</option>
+                </select>
               </div>
               
               <div style={styles.modalButtons}>
@@ -742,7 +774,19 @@ const styles = {
   disabledBtn: {
     opacity: 0.5,
     cursor: 'not-allowed'
-  }
+  },
+  currentAppointmentInfo: {
+    backgroundColor: '#f0f9ff',
+    padding: '16px',
+    borderRadius: '8px',
+    marginBottom: '16px',
+    border: '1px solid #bae6fd'
+  },
+  divider: {
+    border: 'none',
+    borderTop: '1px solid #e5e7eb',
+    margin: '16px 0'
+  },
 };
 
 export default AdminAppointments;
