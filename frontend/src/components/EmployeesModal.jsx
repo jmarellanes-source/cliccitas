@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 
-function EmployeesModal({ store, onClose, onUpdate }) {
+function EmployeesModal({ store, onClose, onUpdate, userRole  }) {
   const { token } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,6 +16,12 @@ function EmployeesModal({ store, onClose, onUpdate }) {
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Verificar si puede agregar/eliminar empleados
+  const canManageEmployees = userRole === 'owner' || userRole === 'admin';
+  const canAddEmployees = userRole === 'owner' || userRole === 'admin';
+  const canDeleteEmployees = userRole === 'owner' || userRole === 'admin';
+  const canChangeRoles = userRole === 'owner'; // Solo owner puede cambiar roles
 
   useEffect(() => {
     fetchEmployees();
@@ -100,12 +106,14 @@ function EmployeesModal({ store, onClose, onUpdate }) {
 
         <div style={styles.sectionHeader}>
           <h3>Lista de Empleados</h3>
-          <button 
-            onClick={() => setShowAddForm(!showAddForm)} 
-            style={styles.addBtn}
-          >
-            + Agregar Empleado
-          </button>
+          {canAddEmployees && (          
+              <button 
+                onClick={() => setShowAddForm(!showAddForm)} 
+                style={styles.addBtn}
+              >
+                + Agregar Empleado
+              </button>
+          )}
         </div>
 
         {showAddForm && (
@@ -177,12 +185,14 @@ function EmployeesModal({ store, onClose, onUpdate }) {
                   <span style={styles.employeeEmail}>{emp.email}</span>
                   <span style={styles.employeeExtension}>Ext: {emp.number}</span>
                 </div>
-                <button 
-                  onClick={() => handleDeleteEmployee(emp.id)}
-                  style={styles.deleteBtn}
-                >
-                  🗑️
-                </button>
+                {canDeleteEmployees && (
+                    <button 
+                      onClick={() => handleDeleteEmployee(emp.id)}
+                      style={styles.deleteBtn}
+                    >
+                      🗑️
+                    </button>
+                )}
               </div>
             ))}
           </div>

@@ -163,7 +163,7 @@ router.get('/:calendarId/available-slots', async (req, res) => {
         const proximaHora = Math.floor(proximoSlotEnMinutos / 60) % 24;
         const proximosMinutos = proximoSlotEnMinutos % 60;
 
-        startTime = String(proximaHora).padStart(2, '0') + ':' + String(proximosMinutos).
+        startTime = String(proximaHora).padStart(2, '0') + ':' + String(proximosMinutos);
 
         console.log ("el starttime es",startTime) 
     }

@@ -11,6 +11,7 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState('');
+  const [userRoles, setUserRoles] = useState({});
 
   useEffect(() => {
     fetchStores();
@@ -22,7 +23,17 @@ function Dashboard() {
       const response = await axios.get(`${import.meta.env.VITE_API_URL}/departments`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setStores(response.data.businesses || []);
+      const storesData = response.data.businesses || [];
+      setStores(storesData);
+
+
+      // Construir mapa de roles por tienda
+      const rolesMap = {};
+      storesData.forEach(store => {
+        rolesMap[store.id] = store.role;
+      });
+      setUserRoles(rolesMap);
+
     } catch (error) {
       console.error('Error fetching stores:', error);
       setError('Error al cargar tus tiendas');
@@ -34,6 +45,10 @@ function Dashboard() {
   const handleStoreUpdate = () => {
     fetchStores();
   };
+
+  const canManageAnyStore = stores.some(store => 
+    store.role === 'owner' || store.role === 'admin'
+  );
 
   return (
     <div style={styles.container}>
@@ -64,9 +79,11 @@ function Dashboard() {
         <div style={styles.section}>
           <div style={styles.sectionHeader}>
             <h3>Mis Tiendas</h3>
-            <button onClick={() => setShowModal(true)} style={styles.createBtn}>
-              + Crear Nueva Tienda
-            </button>
+            {canManageAnyStore && (
+                <button onClick={() => setShowModal(true)} style={styles.createBtn}>
+                  + Crear Nueva Tienda
+                </button>
+            )}
           </div>
 
           {error && <div style={styles.error}>{error}</div>}
@@ -85,6 +102,7 @@ function Dashboard() {
                   key={store.id}
                   store={store}
                   onUpdate={handleStoreUpdate}
+                  userRole={store.role}  // Pasar el rol del usuario en esta tienda
                 />
               ))}
             </div>

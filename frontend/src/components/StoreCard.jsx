@@ -3,9 +3,14 @@ import { useState } from 'react';
 import StoreConfigModal from './StoreConfigModal';
 import EmployeesModal from './EmployeesModal';
 
-function StoreCard({ store, onUpdate }) {
+function StoreCard({ store, onUpdate, userRole }) {
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showEmployeesModal, setShowEmployeesModal] = useState(false);
+
+
+  // Verificar si el usuario tiene permisos de administración
+  const isAdmin = userRole === 'owner' || userRole === 'admin';
+  const isOwner = userRole === 'owner';
 
   return (
     <>
@@ -20,9 +25,16 @@ function StoreCard({ store, onUpdate }) {
               )}
             </div>
           </div>
-          <span style={styles.statusBadge}>
-            {store.is_active ? '🟢 Activo' : '🔴 Inactivo'}
-          </span>
+          <div style={styles.headerRight}>
+            <span style={styles.roleBadge}>
+              {userRole === 'owner' ? '👑 Propietario' : 
+               userRole === 'admin' ? '🔧 Admin' : 
+               '👥 Empleado'}
+            </span>
+            <span style={styles.statusBadge}>
+              {store.is_active ? '🟢 Activo' : '🔴 Inactivo'}
+            </span>
+          </div>
         </div>
 
         <div style={styles.cardBody}>
@@ -57,22 +69,33 @@ function StoreCard({ store, onUpdate }) {
         </div>
 
         <div style={styles.cardFooter}>
+          {isAdmin && (
+            <button 
+              onClick={() => setShowEmployeesModal(true)} 
+              style={styles.employeesBtn}
+            >
+              👥 Empleados
+            </button>
+          )}
+          {isOwner && (
+            <button 
+              onClick={() => setShowConfigModal(true)} 
+              style={styles.configBtn}
+            >
+              ⚙️ Configurar
+            </button>
+          )}
+          {/* Mostrar un botón de "Ver Tienda" para todos */}
           <button 
-            onClick={() => setShowEmployeesModal(true)} 
-            style={styles.employeesBtn}
+            onClick={() => window.location.href = `/${store.slug}`}
+            style={styles.viewBtn}
           >
-            👥 Empleados
-          </button>
-          <button 
-            onClick={() => setShowConfigModal(true)} 
-            style={styles.configBtn}
-          >
-            ⚙️ Configurar
+            👁️ Ver Tienda
           </button>
         </div>
       </div>
 
-      {showConfigModal && (
+      {showConfigModal && isOwner && (
         <StoreConfigModal
           store={store}
           onClose={() => setShowConfigModal(false)}
@@ -80,11 +103,12 @@ function StoreCard({ store, onUpdate }) {
         />
       )}
 
-      {showEmployeesModal && (
+      {showEmployeesModal && isAdmin && (
         <EmployeesModal
           store={store}
           onClose={() => setShowEmployeesModal(false)}
           onUpdate={onUpdate}
+          userRole={userRole}  // Pasar el rol para habilitar/deshabilitar acciones
         />
       )}
     </>
@@ -126,6 +150,19 @@ const styles = {
     margin: '4px 0 0 0',
     fontSize: '12px',
     color: '#6b7280'
+  },
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    flexWrap: 'wrap'
+  },
+  roleBadge: {
+    fontSize: '12px',
+    padding: '4px 8px',
+    borderRadius: '20px',
+    backgroundColor: '#e0e7ff',
+    color: '#4338ca'
   },
   statusBadge: {
     fontSize: '12px',

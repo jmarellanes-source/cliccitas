@@ -603,4 +603,58 @@ router.delete('/:id/employees/:userId', authenticateUser, requireRole('owner'), 
   }
 });
 
+router.patch('/:id/employees/:userId', authenticateUser, requireRole('owner'), async (req, res) => {
+  const { id, userId } = req.params;
+  const { role, name, email } = req.body;
+  
+  try {
+    const groupId = parseInt(id);
+    const pbxUserId = parseInt(userId);
+    
+    // Verificar que el empleado existe en el grupo
+    const members = await pbxApi.getDepartmentMembers(groupId);
+    const employee = members.Members?.find(m => m.Id === pbxUserId);
+    
+    if (!employee) {
+      return res.status(404).json({ error: 'Empleado no encontrado en este departamento' });
+    }
+    
+    // Actualizar rol en user_businesses
+    if (role) {
+      await supabaseService.supabase
+        .from('user_businesses')
+        .update({ 
+          role: role,
+          updated_at: new Date().toISOString()
+        })
+        .eq('pbx_user_id', pbxUserId)
+        .eq('pbx_group_id', groupId);
+    }
+    
+    // Actualizar nombre y email en PBX (si se proporcionan)
+    const pbxUpdates = {};
+    if (name) {
+      const [firstName, ...lastNameParts] = name.split(' ');
+      pbxUpdates.FirstName = firstName;
+      pbxUpdates.LastName = lastNameParts.join(' ') || '';
+    }
+    if (email) {
+      pbxUpdates.EmailAddress = email;
+    }
+    
+    if (Object.keys(pbxUpdates).length > 0) {
+      await pbxApi.updateUser(pbxUserId, pbxUpdates);
+    }
+    
+    res.json({
+      success: true,
+      message: 'Empleado actualizado correctamente'
+    });
+    
+  } catch (error) {
+    console.error('Error updating employee:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
