@@ -313,6 +313,59 @@ class PbxApiService {
     const safeTop = Math.min(top, 100);
     return this.request('GET', `/xapi/v1/Groups?$top=${safeTop}&$skip=${skip}`);
   }
+
+  async getUsersWithGroups() {
+    const result = await this.request(
+      'GET',
+      '/xapi/v1/Users?$expand=Phones,Groups($expand=Rights)'
+    );
+    return result.value || [];
+  }
+
+  async updateUser(userId, updates) {
+      // userId puede ser un número o un string
+      const userIdentifier = typeof userId === 'number' ? userId : parseInt(userId);
+      
+      console.log(`Actualizando usuario ${userIdentifier} con:`, updates);
+      
+      // Los campos que se pueden actualizar
+      // Basado en la documentación de la API
+      const validFields = [
+        'FirstName', 'LastName', 'EmailAddress', 'Language', 
+        'Mobile', 'SendEmailMissedCalls', 'VMEmailOptions',
+        'CallUsEnableChat', 'ClickToCallId', 'WebMeetingFriendlyName',
+        'AccessPassword', 'Require2FA', 'Enable2FA'
+      ];
+      
+      // Filtrar solo campos válidos para evitar errores
+      const filteredUpdates = {};
+      for (const key of validFields) {
+        if (updates[key] !== undefined) {
+          filteredUpdates[key] = updates[key];
+        }
+      }
+      
+      // Si no hay campos válidos para actualizar, retornar
+      if (Object.keys(filteredUpdates).length === 0) {
+        console.warn('No hay campos válidos para actualizar');
+        return { success: true, message: 'Sin cambios' };
+      }
+      
+      try {
+        const result = await this.request(
+          'PATCH',
+          `/xapi/v1/Users(${userIdentifier})`,
+          filteredUpdates
+        );
+        
+        console.log(`✅ Usuario ${userIdentifier} actualizado correctamente`);
+        return result;
+      } catch (error) {
+        console.error(`Error actualizando usuario ${userIdentifier}:`, error);
+        throw error;
+  }
+}
+
 }
 
 module.exports = new PbxApiService();

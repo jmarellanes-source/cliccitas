@@ -326,6 +326,19 @@ router.get('/:id/employees', authenticateUser, async (req, res) => {
     const groupId = parseInt(id);
     const members = await pbxApi.getDepartmentMembers(groupId);
     
+    // Obtener TODOS los usuarios del PBX de una sola vez
+    const allUsers = await pbxApi.getUsersWithGroups();
+
+    if (!allUsers) {
+      return res.status(404).json({ error: 'Error when getting users with group' });
+    }
+
+    // Crear mapa de Number -> User
+    const userMap = new Map();
+    allUsers.forEach(user => {
+      userMap.set(user.Number, user);
+    });
+    
     const owner = members.Members?.find(m => 
       m.Number.endsWith(pbxApi.adminSuffix) && m.Type === 'Extension'
     );
@@ -351,11 +364,12 @@ router.get('/:id/employees', authenticateUser, async (req, res) => {
     const employees = [];
     for (const emp of employeeMembers) {
       try {
-        const pbxUser = await pbxApi.getUserByNumber(emp.Number);
+        //const pbxUser = await pbxApi.getUserByNumber(emp.Number);
+        const pbxUser = userMap.get(emp.Number);
         const pbxUserId = pbxUser?.Id;
         const calendar = calendarMap.get(pbxUserId);
         const isOwner = emp.Number.endsWith(pbxApi.adminSuffix);
-        console.log ("pbxuserid", pbxUserId, "  ")
+        console.log ("pbxuserid in employees", pbxUserId, "  ")
         employees.push({
           id: pbxUserId,
           name: calendar?.user_name || pbxUser?.FirstName + ' ' + pbxUser?.LastName || emp.MemberName,
@@ -377,7 +391,7 @@ router.get('/:id/employees', authenticateUser, async (req, res) => {
       }
     }
     
-    console.log(`✅ Found ${employees.length} employees (including owner)`);
+    console.log(`Found ${employees.length} employees (including owner)`);
     
     res.json({ employees });
   } catch (error) {
@@ -605,20 +619,67 @@ router.delete('/:id/employees/:userId', authenticateUser, requireRole('owner'), 
 
 router.patch('/:id/employees/:userId', authenticateUser, requireRole('owner'), async (req, res) => {
   const { id, userId } = req.params;
-  const { role, name, email } = req.body;
-  
+  const { firstName, lastName, name, email, role } = req.body;
+
   try {
     const groupId = parseInt(id);
     const pbxUserId = parseInt(userId);
+
+
+    const pbxUser = await pbxApi.getUserById(pbxUserId);
     
+    if (!pbxUser) {
+      return res.status(404).json({ error: 'Usuario PBX no encontrado' });
+    }
+
     // Verificar que el empleado existe en el grupo
     const members = await pbxApi.getDepartmentMembers(groupId);
-    const employee = members.Members?.find(m => m.Id === pbxUserId);
-    
+
+    console.log ("pbxuserid ", pbxUserId, members.Members , pbxUser.Number)
+    const employee = members.Members?.find(m => m.Number === pbxUser.Number);
+
     if (!employee) {
       return res.status(404).json({ error: 'Empleado no encontrado en este departamento' });
+    } 
+
+    // 4. Actualizar nombre en PBX
+    if (firstName || lastName || email) {
+
+      const { data: calendar, error: calendarFindError } = await supabaseService.supabase
+        .from('calendars')
+        .select('id')
+        .eq('pbx_user_id', pbxUserId)
+        .single();
+      
+      if (!calendarFindError && calendar) {
+
+        if (!email) {  // si no se proporciona email o nombre o role tomamos el actual   
+          email = calendar.user_email
+        }
+        if  (!name) {
+          name = calendar.user_name
+        }
+
+        const { error: calendarUpdateError } = await supabaseService.supabase
+          .from('calendars')
+          .update({ 
+            user_name: name,
+            user_email : email,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', calendar.id);
+        
+        if (calendarUpdateError) {
+          console.error('Error actualizando calendars.user_name:', calendarUpdateError);
+        } else {
+          console.log(`calendars.user_name actualizado a: ${name}`);
+        }
+      } else {
+        console.warn('No se encontró calendario para este usuario');
+      }
     }
     
+
     // Actualizar rol en user_businesses
     if (role) {
       await supabaseService.supabase
@@ -630,13 +691,14 @@ router.patch('/:id/employees/:userId', authenticateUser, requireRole('owner'), a
         .eq('pbx_user_id', pbxUserId)
         .eq('pbx_group_id', groupId);
     }
+
+    console.log ("despues del primer update")
     
     // Actualizar nombre y email en PBX (si se proporcionan)
     const pbxUpdates = {};
-    if (name) {
-      const [firstName, ...lastNameParts] = name.split(' ');
+    if (firstName || lastName) {
       pbxUpdates.FirstName = firstName;
-      pbxUpdates.LastName = lastNameParts.join(' ') || '';
+      pbxUpdates.LastName = lastName
     }
     if (email) {
       pbxUpdates.EmailAddress = email;

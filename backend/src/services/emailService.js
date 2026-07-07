@@ -107,7 +107,7 @@ const sendAppointmentConfirmation = async (appointment, start_time_local, token,
 };
 
 // Función para enviar correo de "Cita confirmada" (CON enlace para cancelar)
-const sendAppointmentConfirmed = async (appointment, startDateTime, storeName, employeeName) => {
+const sendAppointmentConfirmed = async (appointment, startDateTime, storeName, employeeName, storeSlug) => {
   const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   
   console.log("📧 Enviando confirmación para:", appointment.customer_email);
@@ -156,7 +156,10 @@ const sendAppointmentConfirmed = async (appointment, startDateTime, storeName, e
     console.error('Error guardando token:', error);
   }
   
-  const link = `${baseUrl}/mis-citas?token=${token}`;
+  // Incluir el slug en el enlace
+  const link = storeSlug 
+    ? `${baseUrl}/${storeSlug}/citas?token=${token}` 
+    : `${baseUrl}/mis-citas?token=${token}`;
   
   const emailHtml = `
     <!DOCTYPE html>

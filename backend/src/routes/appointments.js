@@ -528,6 +528,9 @@ router.patch('/:appointmentId', async (req, res) => {
         // Usar la fecha local para el email
         const startDateTime = new Date(updated.start_time);
         console.log ("Enviando correo de confirmación..")
+        const store = await supabaseService.getStoreById(appointment.store_id);
+        const storeSlug = store?.slug;
+
         await sendAppointmentConfirmed(
           {
             ...updated,
@@ -538,7 +541,8 @@ router.patch('/:appointmentId', async (req, res) => {
           },
           startDateTime,
           store.name,
-          employeeName 
+          employeeName,
+          storeSlug
         );
         console.log(`Email de confirmación enviado a ${updated.customer_email}`);   
       } catch (emailError) {

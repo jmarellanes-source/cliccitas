@@ -26,6 +26,7 @@ class SupabaseService {
   constructor() {
     this.admin = supabaseAdmin;
     this.public = supabasePublic;
+    this.supabase = supabaseAdmin;  // ← Agregar esta línea para compatibilida
   }
 
   // Para operaciones que requieren bypass de RLS (crear negocios, etc.)
