@@ -14,46 +14,99 @@ export type Database = {
   }
   public: {
     Tables: {
+      appointment_tokens: {
+        Row: {
+          appointment_id: string
+          created_at: string | null
+          email: string
+          expires_at: string
+          id: string
+          is_used: boolean | null
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          appointment_id: string
+          created_at?: string | null
+          email: string
+          expires_at: string
+          id?: string
+          is_used?: boolean | null
+          token: string
+          used_at?: string | null
+        }
+        Update: {
+          appointment_id?: string
+          created_at?: string | null
+          email?: string
+          expires_at?: string
+          id?: string
+          is_used?: boolean | null
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_tokens_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointments: {
         Row: {
           calendar_id: string
+          confirmed_at: string | null
           created_at: string | null
           customer_email: string
           customer_name: string
           customer_phone: string | null
           end_time: string
+          extended_duration: number | null
           id: string
+          is_confirmed_by_client: boolean | null
           notes: string | null
           start_time: string
           status: string | null
+          status_history: Json | null
           store_id: string
           updated_at: string | null
         }
         Insert: {
           calendar_id: string
+          confirmed_at?: string | null
           created_at?: string | null
           customer_email: string
           customer_name: string
           customer_phone?: string | null
           end_time: string
+          extended_duration?: number | null
           id?: string
+          is_confirmed_by_client?: boolean | null
           notes?: string | null
           start_time: string
           status?: string | null
+          status_history?: Json | null
           store_id: string
           updated_at?: string | null
         }
         Update: {
           calendar_id?: string
+          confirmed_at?: string | null
           created_at?: string | null
           customer_email?: string
           customer_name?: string
           customer_phone?: string | null
           end_time?: string
+          extended_duration?: number | null
           id?: string
+          is_confirmed_by_client?: boolean | null
           notes?: string | null
           start_time?: string
           status?: string | null
+          status_history?: Json | null
           store_id?: string
           updated_at?: string | null
         }

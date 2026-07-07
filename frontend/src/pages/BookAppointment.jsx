@@ -234,9 +234,13 @@ function BookAppointment() {
   const fetchAvailableSlots = async () => {
     setLoading(true);
     try {
+
+      //Usar appointment_duration del empleado seleccionado
+      const default_duration = selectedEmployee?.appointment_duration || 30;
+
       const res = await axios.get(
         `${import.meta.env.VITE_API_URL}/calendar/${selectedEmployee.id}/available-slots`,
-        { params: { date: selectedDate, service_duration: 60 } }
+        { params: { date: selectedDate, service_duration: default_duration || 60 } }
       );
       setAvailableSlots(res.data.available_slots || []);
       setSelectedSlot('');
@@ -250,9 +254,11 @@ function BookAppointment() {
 
   const fetchDayAvailability = async (employeeId, dateStr) => {
   try {
+
+      const default_duration = selectedEmployee?.appointment_duration || 30;
       const res = await axios.get(
         `${import.meta.env.VITE_API_URL}/calendar/${employeeId}/available-slots`,
-        { params: { date: dateStr, service_duration: 60 } }
+        { params: { date: dateStr, service_duration: default_duration || 60 } }
       );
       const slots = res.data.available_slots || [];
       return slots.length;
@@ -355,6 +361,7 @@ function BookAppointment() {
     setError('');
 
     try {
+      const default_duration = selectedEmployee?.appointment_duration || 30;
       await axios.post(`${import.meta.env.VITE_API_URL}/calendar/appointments`, {
         calendar_id: selectedEmployee.id,
         employee_id: selectedEmployee.pbx_user_id,
@@ -363,7 +370,7 @@ function BookAppointment() {
         customer_phone: formData.customer_phone,
         appointment_date: selectedDate,
         appointment_time: selectedSlot,
-        duration: 60,
+        duration: default_duration || 60,
         notes: formData.notes
       });
 
@@ -458,7 +465,7 @@ function BookAppointment() {
                   </div>
                   <div style={styles.employeeInfo}>
                     <span style={styles.employeeName}>{emp.name}</span>
-                    <span style={styles.employeeDuration}>⏱ 60 min</span>
+                    <span style={styles.employeeDuration}>⏱ {emp.appointment_duration || 60} min</span>
                   </div>
                   <span style={styles.arrow}>→</span>
                 </button>

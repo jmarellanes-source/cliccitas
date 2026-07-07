@@ -449,13 +449,11 @@ function AdminAppointments() {
                   onChange={(e) => setRescheduleData({...rescheduleData, duration: parseInt(e.target.value)})}
                   style={styles.input}
                 >
-                  <option value="15">15 min</option>
                   <option value="30">30 min</option>
                   <option value="45">45 min</option>
                   <option value="60">60 min (1 hora)</option>
                   <option value="75">75 min (1:15)</option>
                   <option value="90">90 min (1:30)</option>
-                  <option value="120">120 min (2 horas)</option>
                 </select>
               </div>
               

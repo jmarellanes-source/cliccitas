@@ -66,7 +66,7 @@ router.get('/store/:slug/employees', async (req, res) => {
       pbx_user_id: cal.pbx_user_id,
       name: cal.user_name,
       email: cal.user_email,
-      appointment_duration: cal.appointment_duration
+      appointment_duration: cal.appointment_duration || 30
     }));
     
     res.json({ employees });
