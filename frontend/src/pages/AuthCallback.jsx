@@ -40,7 +40,7 @@ function AuthCallback() {
           
           // Redirigir al dashboard después de 2 segundos
           setTimeout(() => {
-            navigate('/dashboard');
+            navigate('/Inicio');
           }, 2000);
         } else {
           setStatus('Error en la verificación. Por favor, intenta nuevamente.');

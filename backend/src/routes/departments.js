@@ -348,6 +348,17 @@ router.get('/:id/employees', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Store not found' });
     }
     
+    // Obtener roles desde user_businesses
+    const { data: userBusinesses, error: ubError } = await supabaseService.admin
+      .from('user_businesses')
+      .select('pbx_user_id, role')
+      .eq('pbx_group_id', groupId);
+    
+    const roleMap = new Map();
+    (userBusinesses || []).forEach(ub => {
+      roleMap.set(ub.pbx_user_id, ub.role);
+    });
+    
     // Obtener calendarios de la tienda (incluye owner y empleados)
     const calendars = await supabaseService.getCalendarsByStore(store.id);
     
@@ -369,13 +380,17 @@ router.get('/:id/employees', authenticateUser, async (req, res) => {
         const pbxUserId = pbxUser?.Id;
         const calendar = calendarMap.get(pbxUserId);
         const isOwner = emp.Number.endsWith(pbxApi.adminSuffix);
+
+        // Rol real desde user_businesses
+        const realRole = roleMap.get(pbxUserId) || (isOwner ? 'owner' : 'employee');
+
         console.log ("pbxuserid in employees", pbxUserId, "  ")
         employees.push({
           id: pbxUserId,
           name: calendar?.user_name || pbxUser?.FirstName + ' ' + pbxUser?.LastName || emp.MemberName,
           number: emp.Number,
           email: pbxUser?.EmailAddress || '',
-          role: isOwner ? 'owner' : 'employee',
+          role: realRole,
           calendar_id: calendar?.id || null
         });
       } catch (err) {
@@ -385,7 +400,7 @@ router.get('/:id/employees', authenticateUser, async (req, res) => {
           name: emp.MemberName,
           number: emp.Number,
           email: '',
-          role: emp.Number.endsWith(pbxApi.adminSuffix) ? 'owner' : 'employee',
+          role: realRole,
           calendar_id: null
         });
       }

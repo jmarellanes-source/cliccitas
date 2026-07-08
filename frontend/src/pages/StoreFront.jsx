@@ -2,28 +2,64 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
 
 function StoreFront() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const { user, token, loading: authLoading } = useAuth();
   const [store, setStore] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [userRole, setUserRole] = useState(null); // 'owner', 'admin', 'employee', null
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     fetchStoreData();
   }, [slug]);
 
+  // ✅ Verificar el rol del usuario en esta tienda
+  useEffect(() => {
+    const checkUserRole = async () => {
+      if (!user || !token) {
+        setIsAuthenticated(false);
+        setUserRole(null);
+        return;
+      }
+
+      setIsAuthenticated(true);
+      
+      try {
+        const response = await axios.get(
+          `${import.meta.env.VITE_API_URL}/departments`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        
+        const userStore = response.data.businesses?.find(b => b.slug === slug);
+        if (userStore) {
+          setUserRole(userStore.role);
+        } else {
+          setUserRole(null);
+        }
+      } catch (error) {
+        console.error('Error checking user role:', error);
+        setUserRole(null);
+      }
+    };
+
+    if (!authLoading) {
+      checkUserRole();
+    }
+  }, [user, token, authLoading, slug]);
+
   const fetchStoreData = async () => {
     try {
-      // Obtener información de la tienda
       const storeRes = await axios.get(
         `${import.meta.env.VITE_API_URL}/calendar/store/${slug}`
       );
       setStore(storeRes.data.store);
       
-      // Obtener empleados
       const employeesRes = await axios.get(
         `${import.meta.env.VITE_API_URL}/calendar/store/${slug}/employees`
       );
@@ -35,6 +71,10 @@ function StoreFront() {
       setLoading(false);
     }
   };
+
+  // ✅ Determinar qué botones mostrar
+  const canManageAppointments = userRole === 'owner' || userRole === 'admin' || userRole === 'employee';
+  const canManageCalendar = userRole === 'owner' || userRole === 'admin' || userRole === 'employee';
 
   if (loading) {
     return (
@@ -64,12 +104,32 @@ function StoreFront() {
           {store.description && (
             <p style={styles.storeDescription}>{store.description}</p>
           )}
-          <button 
-            onClick={() => navigate(`/${slug}/agendar`)} 
-            style={styles.bookBtn}
-          >
-            📅 Agendar Cita
-          </button>
+          
+          {/* ✅ Botones de administración (solo para usuarios autenticados con permisos) */}
+          <div style={styles.adminButtons}>
+            {canManageAppointments && (
+              <button 
+                onClick={() => navigate(`/${slug}/admin/citas`)} 
+                style={styles.adminBtn}
+              >
+                📋 Ver Citas
+              </button>
+            )}
+            {canManageCalendar && (
+              <button 
+                onClick={() => navigate(`/${slug}/admin/calendar`)} 
+                style={styles.adminBtn}
+              >
+                📅 Mi Calendario
+              </button>
+            )}
+            <button 
+              onClick={() => navigate(`/${slug}/agendar`)} 
+              style={styles.bookBtn}
+            >
+              📅 Agendar Cita
+            </button>
+          </div>
         </div>
       </div>
 
@@ -152,8 +212,15 @@ const styles = {
   },
   storeDescription: {
     fontSize: '18px',
-    marginBottom: '32px',
+    marginBottom: '24px',
     opacity: 0.95
+  },
+  adminButtons: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: '12px',
+    marginTop: '8px'
   },
   bookBtn: {
     padding: '14px 32px',
@@ -165,6 +232,17 @@ const styles = {
     fontWeight: '600',
     cursor: 'pointer',
     transition: 'transform 0.2s'
+  },
+  adminBtn: {
+    padding: '14px 32px',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    color: 'white',
+    border: '2px solid rgba(255, 255, 255, 0.5)',
+    borderRadius: '50px',
+    fontSize: '16px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s'
   },
   infoSection: {
     maxWidth: '1200px',

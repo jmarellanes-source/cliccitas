@@ -97,7 +97,7 @@ function AdminCalendar() {
         <div style={styles.errorIcon}>🏪</div>
         <h2>Tienda no encontrada</h2>
         <p>No pudimos encontrar la tienda que buscas.</p>
-        <button onClick={() => navigate('/dashboard')} style={styles.errorBtn}>
+        <button onClick={() => navigate('/Inicio')} style={styles.errorBtn}>
           Volver al Dashboard
         </button>
       </div>

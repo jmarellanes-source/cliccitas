@@ -18,7 +18,7 @@ function Login() {
 
     try {
       await login(email, password);
-      navigate('/dashboard');
+      navigate('/Inicio');
     } catch (err) {
       setError('Correo o contraseña incorrectos');
     } finally {

@@ -45,16 +45,23 @@ function App() {
           ============================================ */}
           
           {/* Dashboard principal */}
-          <Route path="/dashboard" element={
+          <Route path="/Inicio" element={
             <ProtectedRoute>
               <Dashboard />
             </ProtectedRoute>
           } />
           
           {/* Administrar calendario */}
-          <Route path="/:slug/admin" element={
+          <Route path="/:slug/admin/calendar" element={
             <ProtectedRoute>
               <AdminCalendar />
+            </ProtectedRoute>
+          } />
+          
+          {/* Redirigir /:slug/admin a /:slug/admin/calendar (por compatibilidad) */}
+          <Route path="/:slug/admin" element={
+            <ProtectedRoute>
+              <Navigate to="/:slug/admin/calendar" replace />
             </ProtectedRoute>
           } />
           
@@ -66,7 +73,7 @@ function App() {
           } />
           
           {/* Redirección por defecto */}
-          <Route path="/" element={<Navigate to="/dashboard" />} />
+          <Route path="/" element={<Navigate to="/Inicio" />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
